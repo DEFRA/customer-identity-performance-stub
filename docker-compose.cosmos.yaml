@@ -1,0 +1,25 @@
+services:
+  db:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+    container_name: cidm-stub-cosmos-db
+    environment:
+      MONGO_INITDB_DATABASE: !reset null
+      AZURE_COSMOS_EMULATOR_ENABLE_MONGODB_ENDPOINT: "4.2"
+      AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE: "true"
+      AZURE_COSMOS_EMULATOR_PARTITION_COUNT: "3"
+    expose: !override
+      - "10255"
+    ports:
+      - "8081:8081"
+      - "10255:10255"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--insecure", "https://localhost:8081/_explorer/index.html"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+    volumes: !reset []
+
+  cidm-stub:
+    environment:
+      MONGO_URL: "mongodb://localhost:C2y6yDjf5%2FR%2Bob0N8A7Cgv30VRDJIWEHLM%2B4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw%2FJw%3D%3D@db:10255/admin?ssl=true&retryWrites=false&tlsAllowInvalidCertificates=true&directConnection=true"
