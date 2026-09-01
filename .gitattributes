@@ -1,0 +1,21 @@
+* text=auto
+
+# Force Windows batch files to always use CRLF line endings (just in case they are run on Windows)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Force shell scripts to always use LF line endings
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Modern web and asset formats to explicitly protect or lock to text/binary rules
+*.webp binary
+*.svg text
+*.pdf binary
+
+# Prevent Git from modifying standard binary images
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
