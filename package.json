@@ -1,0 +1,43 @@
+{
+  "name": "@defra/cidm-stub",
+  "version": "0.1.0",
+  "description": "The CIDM stub is a lightweight, containerised Node.js application that replicates the external API interfaces of Customer Identity (CIDM) for use in performance, load, and integration testing by consuming service teams. The CIDM stub allows teams to run their authentication journeys end-to-end against a locally-hosted, self-contained stub rather than taking a dependency on a live Customer Identity environment. It is not a full standards-compliant identity provider and must not be used in production or in place of real security controls.",
+  "license": "OGL-UK-3.0",
+  "author": "Defra DDTS",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "build": "npm run copy:assets && npm run build:css",
+    "build:css": "sass --load-path=node_modules --quiet-deps src/assets/sass/application.scss public/assets/stylesheets/application.css --style=compressed --no-source-map",
+    "compose:cosmos:down": "docker compose -f docker-compose.yaml -f docker-compose.cosmos.yaml down",
+    "compose:cosmos:reset": "npm run compose:cosmos:down && npm run compose:cosmos:up",
+    "compose:cosmos:up": "docker compose -f docker-compose.yaml -f docker-compose.cosmos.yaml up",
+    "compose:down": "docker compose down",
+    "compose:reset": "npm run compose:down && npm run compose:up",
+    "compose:up": "docker compose up",
+    "copy:assets": "rm -rf public/assets/govuk && mkdir -p public/assets/govuk && cp -R node_modules/govuk-frontend/dist/govuk/assets/images public/assets/govuk/images && cp -R node_modules/govuk-frontend/dist/govuk/assets/fonts public/assets/govuk/fonts && cp node_modules/govuk-frontend/dist/govuk/assets/manifest.json public/assets/govuk/manifest.json && cp node_modules/govuk-frontend/dist/govuk/govuk-frontend.min.js public/assets/govuk/govuk-frontend.min.js",
+    "dev": "node --watch src/index.js",
+    "lint": "npx eslint",
+    "start": "node src/index.js",
+    "test:integration": "node --test test/integration/*.test.js",
+    "test:integration:local": "node test/run-integration.js",
+    "watch:css": "sass --load-path=node_modules --quiet-deps --watch src/assets/sass/application.scss:public/assets/stylesheets/application.css --style=expanded --source-map"
+  },
+  "dependencies": {
+    "@hapi/hapi": "^21.4.10",
+    "@hapi/inert": "^7.1.2",
+    "@hapi/vision": "^7.0.3",
+    "dotenv": "^16.4.5",
+    "govuk-frontend": "^6.4.0",
+    "mongodb": "~6.21.0",
+    "nunjucks": "^3.2.4"
+  },
+  "devDependencies": {
+    "eslint": "^10.9.1",
+    "neostandard": "^0.14.0-next.1",
+    "sass": "^1.102.0"
+  }
+}

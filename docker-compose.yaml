@@ -1,0 +1,39 @@
+services:
+  db:
+    image: mongo:8
+    container_name: cidm-stub-db
+    environment:
+      MONGO_INITDB_DATABASE: cidm-stub
+    expose:
+      - "27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - cidm-stub-db-data:/data/db
+
+  cidm-stub:
+    build:
+      context: .
+      target: development
+      args:
+        PARENT_VERSION: ${PARENT_VERSION:-3.1.4-node24.19.0}
+        PORT: ${PORT:-3000}
+    image: cidm-stub
+    container_name: cidm-stub
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    command: npm run dev
+    volumes:
+      - ./src:/home/node/src
+      - ./public:/home/node/public
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+
+volumes:
+  cidm-stub-db-data:

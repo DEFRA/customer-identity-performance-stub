@@ -1,0 +1,54 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Dependencies (will be reinstalled in container via npm ci)
+node_modules
+npm-debug.log*
+yarn-error.log
+yarn.lock
+package-lock.json
+
+# Build and test artifacts
+dist
+build
+coverage
+.nyc_output
+*.tgz
+public/assets/govuk
+public/assets/stylesheets/application.css
+
+# Development tools and IDE
+.vscode
+.idea
+*.swp
+*.swo
+*.iml
+.editorconfig
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker/Compose (not needed in build context)
+docker-compose*.yaml
+Dockerfile
+.dockerignore
+
+# Documentation and config (optional for runtime)
+README.md
+CHANGELOG.md
+.mocharc.json
+jest.config.js
+
+# Editor backup files
+*~
+*.bak
+.tmp
