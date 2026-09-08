@@ -4,10 +4,13 @@ services:
     container_name: cidm-stub-db
     environment:
       MONGO_INITDB_DATABASE: cidm-stub
+      # dev-only fixed credentials, not a secret
+      MONGO_INITDB_ROOT_USERNAME: mongoadmin
+      MONGO_INITDB_ROOT_PASSWORD: secret
     expose:
       - "27017"
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test: ["CMD", "mongosh", "--quiet", "-u", "mongoadmin", "-p", "secret", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping').ok"]
       interval: 5s
       timeout: 5s
       retries: 10

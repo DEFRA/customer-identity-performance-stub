@@ -1,6 +1,6 @@
 /**
- * Account service
- * CRUD operations for accounts
+ * Account repository
+ * CRUD operations for accounts (data access layer)
  */
 
 import { ObjectId } from 'mongodb'
