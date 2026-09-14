@@ -6,7 +6,8 @@ services:
       MONGO_INITDB_DATABASE: !reset null
       AZURE_COSMOS_EMULATOR_ENABLE_MONGODB_ENDPOINT: "4.2"
       AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE: "true"
-      AZURE_COSMOS_EMULATOR_PARTITION_COUNT: "3"
+      # must be >= the number of collections oidc-setup.js provisions (6), plus headroom
+      AZURE_COSMOS_EMULATOR_PARTITION_COUNT: "10"
     expose: !override
       - "10255"
     ports:

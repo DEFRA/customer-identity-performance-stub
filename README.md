@@ -19,7 +19,7 @@ cp .env.example .env
 npm run compose:up
 ```
 
-The stub runs at `http://localhost:3000` with MongoDB at `mongodb://db:27017` (internal Docker DNS).
+The stub runs at `http://localhost:3000` with MongoDB at `mongodb://db:27017` (internal Docker DNS). The `db` service requires auth (fixed dev-only credentials `mongoadmin`/`secret`, matching the connection string already in `.env.example`) so local behavior matches deployed environments.
 
 #### Azure Cosmos DB Emulator
 
@@ -73,6 +73,12 @@ cp .env.example .env
 npm run dev
 ```
 
+This requires a local MongoDB with matching auth:
+
+```sh
+docker run -d --name cidm-stub-db -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME=mongoadmin -e MONGO_INITDB_ROOT_PASSWORD=secret mongo:8
+```
+
 For concurrent Sass compilation:
 
 ```sh
@@ -83,7 +89,7 @@ npm run watch:css
 
 - **OIDC Authorization Code Flow** — with PKCE enforcement (S256 only)
 - **Refresh Token Flow** — when `offline_access` scope requested
-- **Token Signing** — RS256 JWS matching Azure AD B2C format
+- **Token Signing** — RS256 JWS matching Azure AD B2C format; set `SIGNING_KEY` (base64 PKCS#8 PEM) environment variable for a key stable across restarts, otherwise an ephemeral key is generated per-process
 - **Policy Routing** — supports policy-scoped discovery and endpoint URLs
 - **Test Account Management** — admin API for creating/managing test identities
 - **MongoDB Persistence** — OIDC grants, sessions, clients, and test accounts
@@ -114,14 +120,19 @@ src/
   config/            Environment and configuration
   db/                MongoDB connection and lifecycle
   handlers/          Route handlers and business logic
+  oidc/              OIDC provider setup and utilities
   plugins/           Hapi plugins (views, static files)
+  repositories/      Data access layer (repositories)
   routes/            Route definitions
-  services/          Business logic for OIDC operations
   views/             Nunjucks templates
   assets/sass/       Sass source files
   index.js           Application entry point
   server.js          Hapi server setup
 public/assets/       Built CSS and GOV.UK Frontend assets
+scripts/             Development and testing utility scripts
+test/
+  unit/              Unit tests
+  integration/       Integration tests
 ```
 
 ## Configuration
@@ -132,12 +143,15 @@ Environment variables (from `.env` file):
 NODE_ENV=development           # Local dev mode
 PORT=3000                      # Server port
 HOST=0.0.0.0                   # Listen on all interfaces
-MONGO_URL=mongodb://db:27017   # MongoDB connection (docker-compose)
+PUBLIC_URL=http://localhost:3000 # Public URL of the app (used for OIDC issuer and discovery)
+SIGNING_KEY=                   # Base64-encoded PKCS#8 PEM RSA private key for token signing (stable across restarts; omit for ephemeral)
+OIDC_CLIENTS=                  # OIDC clients (JSON array); Example: OIDC_CLIENTS='[{"client_id":"foo","client_secret":"bar","redirect_uris":["http://localhost:3001/cb"]}]'
+MONGO_URL=mongodb://mongoadmin:secret@db:27017/?authSource=admin # MongoDB connection (docker-compose)
 MONGO_DB_NAME=cidm-stub        # Database name
 MONGO_TIMEOUT=5000             # Connection timeout (ms)
 ```
 
-For `npm run dev` on host: use `mongodb://localhost:27017` (requires local MongoDB).
+For `npm run dev` on host: use `mongodb://mongoadmin:secret@localhost:27017/?authSource=admin` (requires a local MongoDB with matching auth, see Option 2 above).
 When using the Cosmos DB Emulator Compose override, its `MONGO_URL` takes precedence over the value in `.env`.
 
 ## Development
@@ -153,6 +167,20 @@ npm run test:integration:local
 This starts the stack, waits for it to become healthy, runs the tests, and removes the stack even when a test fails.
 
 Use `npm run test:integration` to test an already-running application. Set `TEST_BASE_URL` to test a different application URL; it defaults to `http://localhost:3000`.
+
+Some integration tests (`test/integration/auth-code-flow.test.js`) drive the full OIDC authorization
+code, refresh token, and logout flows headlessly and need a registered OIDC client.
+`npm run test:integration:local` provisions a dedicated, non-secret test client automatically
+(via `test/run-integration.js`, which sets default `CLIENT_ID`/`CLIENT_SECRET`/`OIDC_CLIENTS` values
+before starting `docker-compose.test.yaml`) — no `.env` changes are required. `npm run compose:test:up`
+only forwards the current `OIDC_CLIENTS` environment variable into the stack; it does not set that
+variable itself, so running it directly without first exporting matching `CLIENT_ID`/`CLIENT_SECRET`/
+`OIDC_CLIENTS` values starts a stack without the client and the headless tests will fail. Prefer
+`npm run test:integration:local`, or export those variables yourself before `npm run compose:test:up`.
+
+### Scripts
+
+Utility scripts in the `scripts/` folder provide helpers for testing and development workflows. See the comments in each script for detailed documentation on usage, parameters, and behavior.
 
 ### Pull Request Validation
 
@@ -188,7 +216,7 @@ PARENT_VERSION=3.1.4-node24.19.0 docker compose build
 
 | Flow | Status | Notes |
 |------|--------|-------|
-| Authorization Code + PKCE | ✅ Supported | S256 challenge method only |
+| Authorization Code + PKCE | ✅ Supported | S256 challenge method only; PKCE is mandatory for all clients |
 | Refresh Token | ✅ Supported | When `offline_access` scope requested |
 | Client Credentials | ❌ Out of Scope | |
 | Implicit | ❌ Out of Scope | |
@@ -204,7 +232,6 @@ The stub exposes the following endpoints:
 | **JWKS** | `GET /{policyId}/.well-known/jwks` | `GET /.well-known/jwks?p={policyId}` |
 | **Authorization** | `GET /{policyId}/oidc/authorize` | `GET /oidc/authorize?p={policyId}` |
 | **Token** | `POST /{policyId}/oidc/token` | `POST /oidc/token?p={policyId}` |
-| **UserInfo** | `GET /{policyId}/oidc/userinfo` | `GET /oidc/userinfo?p={policyId}` |
 | **End Session** | `GET /{policyId}/oidc/endsession` | `GET /oidc/endsession?p={policyId}` |
 | **Admin API** | `* /admin/*` | — |
 | **Liveness** | `GET /health/live` | — |

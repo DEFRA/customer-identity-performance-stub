@@ -1,0 +1,6 @@
+# Override used only by test/run-integration.js to register a dedicated,
+# non-secret OIDC client for the headless integration tests.
+services:
+  cidm-stub:
+    environment:
+      OIDC_CLIENTS: ${OIDC_CLIENTS}
