@@ -27,6 +27,7 @@ Guidance for AI coding agents working on the DEFRA CIDM Stub.
 - Client credentials, implicit flow, and device code are out of scope.
 - Policy IDs are case-insensitive and should continue to support both path-segment and query-parameter endpoint forms.
 - For a known client with an unregistered `redirect_uri`, preserve the B2C-like fallback behavior: redirect or respond to the first valid registered redirect URI for that client and honor the requested `response_mode`. This is an exception to the standard `oidc-provider` behavior that would return a HTTP 400 error instead.
+- RP-Initiated Logout only redirects to `post_logout_redirect_uri` when `id_token_hint` is also supplied (B2C-like); without it the session still ends but the user sees the provider's own sign-out success page instead of being redirected to the RP.
 
 ## Testing instructions
 - Run unit tests with `npm run test:unit`.

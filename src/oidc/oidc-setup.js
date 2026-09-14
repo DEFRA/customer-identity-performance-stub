@@ -6,6 +6,7 @@ import { filterDiscoveryMetadata } from './metadata.js'
 import { MongoAdapter } from './mongodb-adapter.js'
 import { renderView } from './render.js'
 import { redirectUnregisteredRedirectUri } from './redirect-uri-validation.js'
+import { requireIdTokenHintForPostLogoutRedirect } from './end-session-redirect-gate.js'
 
 // Hardcoded - will be replaced with accounts stored in the database
 export const TEST_ACCOUNT = {
@@ -119,6 +120,7 @@ export const providerConfiguration = {
 const provider = new oidc.Provider(config.oidc.issuer, providerConfiguration)
 
 provider.use(redirectUnregisteredRedirectUri((id) => provider.Client.find(id)))
+provider.use(requireIdTokenHintForPostLogoutRedirect)
 provider.use(filterDiscoveryMetadata)
 
 export default provider
