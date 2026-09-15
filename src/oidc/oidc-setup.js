@@ -7,6 +7,8 @@ import { MongoAdapter } from './mongodb-adapter.js'
 import { renderView } from './render.js'
 import { redirectUnregisteredRedirectUri } from './redirect-uri-validation.js'
 import { requireIdTokenHintForPostLogoutRedirect } from './end-session-redirect-gate.js'
+import { extractPolicy } from './policy.js'
+import { OIDC_CLAIMS } from './claims.js'
 
 // Hardcoded - will be replaced with accounts stored in the database
 export const TEST_ACCOUNT = {
@@ -50,33 +52,10 @@ export const providerConfiguration = {
     idTokenSigningAlgValues: ['RS256']
   },
   scopes: ['openid', 'offline_access'],
+  // Policy identifier preserved into the interaction session for the authorize flow
+  extraParams: ['p'],
   claims: {
-    openid: [
-      'sub',
-      'contactId',
-      'email',
-      'firstName',
-      'lastName',
-      'serviceId',
-      'correlationId',
-      'sessionId',
-      'uniqueReference',
-      'loa',
-      'aal',
-      'enrolmentCount',
-      'enrolmentRequestCount',
-      'currentRelationshipId',
-      'relationships',
-      'roles',
-      'amr',
-      'iss',
-      'iat',
-      'exp',
-      'aud',
-      'acr',
-      'nonce',
-      'auth_time'
-    ]
+    openid: OIDC_CLAIMS
   },
   subjectTypes: [
     'pairwise'
@@ -119,6 +98,7 @@ export const providerConfiguration = {
 
 const provider = new oidc.Provider(config.oidc.issuer, providerConfiguration)
 
+provider.use(extractPolicy)
 provider.use(redirectUnregisteredRedirectUri((id) => provider.Client.find(id)))
 provider.use(requireIdTokenHintForPostLogoutRedirect)
 provider.use(filterDiscoveryMetadata)

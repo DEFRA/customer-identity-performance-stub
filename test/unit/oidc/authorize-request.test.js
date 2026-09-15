@@ -43,4 +43,12 @@ describe('addConsentPromptForOfflineAccess', () => {
 
     assert.equal(result, requestUrl)
   })
+
+  it('adds consent prompt for the path-segment policy form', () => {
+    const requestUrl = '/b2c_1a_signupsignin/oidc/auth?client_id=foo&scope=openid+offline_access'
+
+    const result = addConsentPromptForOfflineAccess('GET', requestUrl)
+
+    assert.equal(result, '/b2c_1a_signupsignin/oidc/auth?client_id=foo&scope=openid+offline_access&prompt=consent')
+  })
 })

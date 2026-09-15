@@ -228,16 +228,16 @@ The stub exposes the following endpoints:
 
 | Endpoint | Path segment form | Query parameter form |
 |----------|-------------------|----------------------|
-| **OIDC Discovery** | `GET /{policyId}/.well-known/openid-configuration` | `GET /.well-known/openid-configuration?p={policyId}` |
-| **JWKS** | `GET /{policyId}/.well-known/jwks` | `GET /.well-known/jwks?p={policyId}` |
-| **Authorization** | `GET /{policyId}/oidc/authorize` | `GET /oidc/authorize?p={policyId}` |
+| **OIDC Discovery** | `GET /{policyId}/oidc/.well-known/openid-configuration` | `GET /oidc/.well-known/openid-configuration?p={policyId}` |
+| **JWKS** | `GET /{policyId}/oidc/jwks` | `GET /oidc/jwks?p={policyId}` |
+| **Authorization** | `GET /{policyId}/oidc/auth` | `GET /oidc/auth?p={policyId}` |
 | **Token** | `POST /{policyId}/oidc/token` | `POST /oidc/token?p={policyId}` |
-| **End Session** | `GET /{policyId}/oidc/endsession` | `GET /oidc/endsession?p={policyId}` |
+| **End Session** | `GET /{policyId}/oidc/session/end` | `GET /oidc/session/end?p={policyId}` |
 | **Admin API** | `* /admin/*` | — |
 | **Liveness** | `GET /health/live` | — |
 | **Readiness** | `GET /health/ready` | — |
 
-Valid policy IDs: `b2c_1a_signupsignin`, `b2c_1a_signupsiginalt`, `b2c_1a_signupsiginsfi` (case-insensitive).
+Valid policy IDs: `b2c_1a_signupsignin`, `b2c_1a_signupsigninalt`, `b2c_1a_signupsigninsfi` (case-insensitive). Policies are a routing/labelling construct only - they don't alter claim construction or authentication UX. The active policy is reflected in issued ID tokens as the `acr` claim.
 
 ### Health Checks
 

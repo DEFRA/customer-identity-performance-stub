@@ -55,7 +55,8 @@ export const submitLogin = async ({ raw: { req, res }, payload }, h) => {
   const { username } = payload ?? {}
 
   if (username === TEST_ACCOUNT.username) {
-    const result = { login: { accountId: TEST_ACCOUNT.claims.sub } }
+    // the acr claim reflects the B2C policy used for this authorization request
+    const result = { login: { accountId: TEST_ACCOUNT.claims.sub, acr: details.params.p } }
     return finishInteraction(req, res, result, undefined, h)
   }
 

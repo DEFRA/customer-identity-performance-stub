@@ -28,6 +28,8 @@ Guidance for AI coding agents working on the DEFRA CIDM Stub.
 - Policy IDs are case-insensitive and should continue to support both path-segment and query-parameter endpoint forms.
 - For a known client with an unregistered `redirect_uri`, preserve the B2C-like fallback behavior: redirect or respond to the first valid registered redirect URI for that client and honor the requested `response_mode`. This is an exception to the standard `oidc-provider` behavior that would return a HTTP 400 error instead.
 - RP-Initiated Logout only redirects to `post_logout_redirect_uri` when `id_token_hint` is also supplied (B2C-like); without it the session still ends but the user sees the provider's own sign-out success page instead of being redirected to the RP.
+- `POST /session/end` is supported: the request is translated into an equivalent GET (form body merged into the query string) before `oidc-provider`'s own router sees it. `POST /auth` is intentionally NOT supported - `oidc-provider` only registers a GET route for `/auth` unless `enableHttpPostMethods` is enabled, which requires `cookies.long.sameSite=none`; modern browsers reject `SameSite=None` cookies without `Secure`, which would break the session cookie entirely over the plain HTTP used locally. Do not enable `enableHttpPostMethods` or add POST handling back to `/auth`.
+- B2C policies (`b2c_1a_signupsignin`, `b2c_1a_signupsigninalt`, `b2c_1a_signupsigninsfi`, case-insensitive) are extracted from either the path-segment form (`/{policyId}/oidc/*`) or the query-parameter form (`?p={policyId}`) by a single pre-middleware; no other component parses the URL for policy information. Policies are a routing/labelling construct only - the same account lookup and token building logic runs regardless of policy. An unrecognized policy value returns a 404 error. The resolved policy is reflected in issued ID tokens as the `acr` claim, and in the per-policy discovery document's endpoint URIs (in the same form used to fetch it) and `claims_supported`.
 
 ## Testing instructions
 - Run unit tests with `npm run test:unit`.
@@ -38,6 +40,7 @@ Guidance for AI coding agents working on the DEFRA CIDM Stub.
 - Use one-off environment prefixes for local test overrides, for example `TEST_USERNAME=testuser@example.com npm run test:integration:local`.
 - Keep integration coverage balanced. Prefer focused unit tests for response-mode permutations and edge cases unless the end-to-end wiring is the risk being tested.
 - Add or update tests for behavior changes, especially OIDC request validation, token shape, policy routing, health checks, database adapters, and Docker-backed startup behavior.
+- When you have fixed a bug check if there is any new unit or integration test worth adding as well.
 
 ## Validation before handoff
 - Run `npm run lint` after JavaScript changes.

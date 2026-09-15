@@ -8,6 +8,7 @@ const clientSecret = process.env.CLIENT_SECRET || 'integration-test-secret'
 const redirectUri = 'http://localhost:3001/cb'
 const postLogoutRedirectUri = 'http://localhost:3001/logout'
 const username = process.env.TEST_USERNAME || 'testuser@example.com'
+const policy = 'b2c_1a_signupsignin'
 
 function generateCodeVerifier () {
   return crypto.randomBytes(32).toString('base64url')
@@ -34,7 +35,7 @@ function cookieHeader (jar) {
 }
 
 async function fetchMetadata () {
-  const response = await fetch(`${baseUrl}/oidc/.well-known/openid-configuration`)
+  const response = await fetch(`${baseUrl}/${policy}/oidc/.well-known/openid-configuration`)
   assert.equal(response.status, 200)
   return response.json()
 }
@@ -153,15 +154,31 @@ test('completes the authorization code + refresh token flow and returns valid cl
   assert.ok(tokenResponse.id_token)
   assert.ok(tokenResponse.access_token)
   assert.ok(tokenResponse.refresh_token)
+  assert.equal(tokenResponse.scope, 'openid offline_access')
 
   const idTokenClaims = decodeJwt(tokenResponse.id_token)
   assert.equal(idTokenClaims.sub, 'testuser')
   assert.equal(idTokenClaims.contactId, 'contact-1')
   assert.equal(idTokenClaims.email, 'testuser@example.com')
+  assert.equal(idTokenClaims.acr, policy)
 
   const refreshedTokenResponse = await refreshTokens(metadata.token_endpoint, tokenResponse.refresh_token)
   assert.ok(refreshedTokenResponse.access_token)
   assert.ok(refreshedTokenResponse.id_token)
+})
+
+test('completes the authorization code + refresh token flow using the query-parameter policy form', async () => {
+  const discoveryResponse = await fetch(`${baseUrl}/oidc/.well-known/openid-configuration?p=${policy}`)
+  assert.equal(discoveryResponse.status, 200)
+  const metadata = await discoveryResponse.json()
+
+  const { code, codeVerifier } = await performLogin(metadata)
+  const tokenResponse = await exchangeCodeForTokens(metadata.token_endpoint, code, codeVerifier)
+  assert.ok(tokenResponse.refresh_token)
+  assert.equal(tokenResponse.scope, 'openid offline_access')
+
+  const idTokenClaims = decodeJwt(tokenResponse.id_token)
+  assert.equal(idTokenClaims.acr, policy)
 })
 
 test('logs the user out and destroys the session', async () => {
@@ -252,6 +269,30 @@ test('logs out and redirects to the registered post_logout_redirect_uri when id_
   const location = new URL(response.headers.get('location'))
   assert.equal(location.origin + location.pathname, postLogoutRedirectUri)
   assert.equal(location.searchParams.get('state'), postLogoutState)
+})
+
+// Confirms POST /session/end is accepted (translated to an equivalent GET internally) while
+// POST /auth remains unsupported, since oidc-provider only ever registers a GET route for /auth.
+test('accepts a POST end_session request and applies the id_token_hint gate', async () => {
+  const metadata = await fetchMetadata()
+  const { jar, code, codeVerifier } = await performLogin(metadata)
+  const { id_token: idToken } = await exchangeCodeForTokens(metadata.token_endpoint, code, codeVerifier)
+
+  const response = await fetch(metadata.end_session_endpoint, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      cookie: cookieHeader(jar),
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      id_token_hint: idToken,
+      post_logout_redirect_uri: postLogoutRedirectUri
+    }).toString()
+  })
+  assert.equal(response.status, 200)
+  const logoutPage = await response.text()
+  assert.ok(logoutPage.match(/action="([^"]+)"/), 'expected logout form action in the confirmation page')
 })
 
 // Mirrors Azure AD B2C: without id_token_hint, post_logout_redirect_uri is ignored and the

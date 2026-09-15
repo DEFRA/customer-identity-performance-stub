@@ -3,12 +3,28 @@ import { describe, it } from 'node:test'
 
 import { requireIdTokenHintForPostLogoutRedirect } from '../../../src/oidc/end-session-redirect-gate.js'
 
-function createCtx ({ method = 'GET', path = '/session/end', query = {}, body = {} } = {}) {
+function createCtx ({ method = 'GET', path = '/session/end', query = {} } = {}) {
   return {
     method,
     path,
+    query
+  }
+}
+
+// Mimics a real POST /session/end: the raw application/x-www-form-urlencoded payload is only
+// available on the req stream, not pre-parsed anywhere.
+function createPostCtx ({ path = '/session/end', query = {}, formBody }) {
+  const chunks = [Buffer.from(formBody)]
+  return {
+    method: 'POST',
+    path,
     query,
-    request: { body }
+    request: { body: undefined },
+    is: (type) => type === 'application/x-www-form-urlencoded',
+    req: {
+      readable: true,
+      [Symbol.asyncIterator]: () => chunks[Symbol.iterator]()
+    }
   }
 }
 
@@ -43,15 +59,28 @@ describe('requireIdTokenHintForPostLogoutRedirect', () => {
   })
 
   it('strips post_logout_redirect_uri from the request body on POST when id_token_hint is absent', async () => {
-    const ctx = createCtx({
-      method: 'POST',
-      body: { post_logout_redirect_uri: 'https://client.example.com/logout', client_id: 'foo' }
+    const ctx = createPostCtx({
+      formBody: 'post_logout_redirect_uri=https%3A%2F%2Fclient.example.com%2Flogout&client_id=foo'
     })
     const nextCalled = await runMiddleware(ctx)
 
     assert.equal(nextCalled, true)
-    assert.equal('post_logout_redirect_uri' in ctx.request.body, false)
-    assert.equal(ctx.request.body.client_id, 'foo')
+    assert.equal(ctx.method, 'GET')
+    assert.equal('post_logout_redirect_uri' in ctx.query, false)
+    assert.equal(ctx.query.client_id, 'foo')
+  })
+
+  it('translates a POST into an equivalent GET, merging the form body into the query string', async () => {
+    const ctx = createPostCtx({
+      query: { existing: 'yes' },
+      formBody: 'client_id=foo&id_token_hint=some.jwt.token'
+    })
+    await runMiddleware(ctx)
+
+    assert.equal(ctx.method, 'GET')
+    assert.equal(ctx.query.existing, 'yes')
+    assert.equal(ctx.query.client_id, 'foo')
+    assert.equal(ctx.query.id_token_hint, 'some.jwt.token')
   })
 
   it('leaves post_logout_redirect_uri untouched when id_token_hint is present', async () => {
