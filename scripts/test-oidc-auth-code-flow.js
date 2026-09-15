@@ -78,7 +78,8 @@ const CONFIG = {
   oidcServer: process.env.OIDC_SERVER || 'http://localhost:3000',
   callbackPort: parseInt(process.env.CALLBACK_PORT || '3001'),
   callbackUrl: `http://localhost:${process.env.CALLBACK_PORT || 3001}/cb`,
-  username: process.env.TEST_USERNAME || 'testuser@example.com'
+  username: process.env.TEST_USERNAME || 'testuser@example.com',
+  policy: process.env.POLICY || 'b2c_1a_signupsignin'
 }
 
 /**
@@ -245,7 +246,7 @@ async function refreshTokens (tokenEndpoint, refreshToken) {
  * Fetch OIDC discovery metadata
  */
 async function fetchOidcMetadata () {
-  const metadataUrl = new URL('/oidc/.well-known/openid-configuration', CONFIG.oidcServer).toString()
+  const metadataUrl = new URL(`/${CONFIG.policy}/oidc/.well-known/openid-configuration`, CONFIG.oidcServer).toString()
   const response = await fetch(metadataUrl)
   if (!response.ok) {
     throw new Error(`Failed to fetch OIDC metadata: ${response.status}`)
@@ -278,7 +279,8 @@ async function main () {
     console.log(`   Client ID: ${CONFIG.clientId}`)
     console.log(`   OIDC Server: ${CONFIG.oidcServer}`)
     console.log(`   Callback URL: ${CONFIG.callbackUrl}`)
-    console.log(`   Test username: ${CONFIG.username}\n`)
+    console.log(`   Test username: ${CONFIG.username}`)
+    console.log(`   Policy: ${CONFIG.policy}\n`)
 
     // Step 1: Fetch OIDC discovery metadata
     const metadata = await fetchOidcMetadata()

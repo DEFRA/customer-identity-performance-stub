@@ -7,12 +7,11 @@ const client = {
   redirectUris: ['https://client.example.com/cb', 'https://client.example.com/cb2']
 }
 
-function createCtx ({ method = 'GET', path = '/auth', query = {}, body = {} } = {}) {
+function createCtx ({ method = 'GET', path = '/auth', query = {} } = {}) {
   return {
     method,
     path,
     query,
-    request: { body },
     status: undefined,
     type: undefined,
     body: undefined,
@@ -181,14 +180,14 @@ describe('redirectUnregisteredRedirectUri', () => {
     assert.equal(ctx._redirectedTo, undefined)
   })
 
-  it('reads parameters from the request body for POST requests', async () => {
+  it('passes through POST requests unchanged (POST /auth is not supported)', async () => {
     const ctx = createCtx({
       method: 'POST',
-      body: { client_id: 'foo', redirect_uri: 'https://evil.example.com/cb', state: 'xyz' }
+      query: { client_id: 'foo', redirect_uri: 'https://evil.example.com/cb' }
     })
     const nextCalled = await runMiddleware(async () => client, ctx)
 
-    assert.equal(nextCalled, false)
-    assert.equal(ctx.status, 303)
+    assert.equal(nextCalled, true)
+    assert.equal(ctx._redirectedTo, undefined)
   })
 })

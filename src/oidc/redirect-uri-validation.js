@@ -11,13 +11,14 @@ const escapeHtml = (str) => {
 
 // Mirrors Azure AD B2C: unregistered redirect_uri for a known client redirects
 // to that client's first registered redirect_uri with error/error_description,
-// rather than a raw 400 (unknown client_id still falls through to 400).
+// rather than a raw 400 (unknown client_id still falls through to 400). POST /auth is not
+// supported (oidc-provider only registers GET by default), so this only handles GET.
 export const redirectUnregisteredRedirectUri = (findClient) => async (ctx, next) => {
-  if (ctx.path !== '/auth' || !['GET', 'POST'].includes(ctx.method)) {
+  if (ctx.path !== '/auth' || ctx.method !== 'GET') {
     return next()
   }
 
-  const params = ctx.method === 'GET' ? ctx.query : ctx.request.body
+  const params = ctx.query
   const clientId = params?.client_id
   const redirectUri = params?.redirect_uri
   const responseMode = params?.response_mode

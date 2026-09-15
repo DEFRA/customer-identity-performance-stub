@@ -8,6 +8,7 @@ const clientSecret = process.env.CLIENT_SECRET || 'integration-test-secret'
 const redirectUri = 'http://localhost:3001/cb'
 const postLogoutRedirectUri = 'http://localhost:3001/logout'
 const username = process.env.TEST_USERNAME || 'testuser@example.com'
+const policy = 'b2c_1a_signupsignin'
 
 function generateCodeVerifier () {
   return crypto.randomBytes(32).toString('base64url')
@@ -34,7 +35,7 @@ function cookieHeader (jar) {
 }
 
 async function fetchMetadata () {
-  const response = await fetch(`${baseUrl}/oidc/.well-known/openid-configuration`)
+  const response = await fetch(`${baseUrl}/${policy}/oidc/.well-known/openid-configuration`)
   assert.equal(response.status, 200)
   return response.json()
 }
@@ -153,15 +154,31 @@ test('completes the authorization code + refresh token flow and returns valid cl
   assert.ok(tokenResponse.id_token)
   assert.ok(tokenResponse.access_token)
   assert.ok(tokenResponse.refresh_token)
+  assert.equal(tokenResponse.scope, 'openid offline_access')
 
   const idTokenClaims = decodeJwt(tokenResponse.id_token)
   assert.equal(idTokenClaims.sub, 'testuser')
   assert.equal(idTokenClaims.contactId, 'contact-1')
   assert.equal(idTokenClaims.email, 'testuser@example.com')
+  assert.equal(idTokenClaims.acr, policy)
 
   const refreshedTokenResponse = await refreshTokens(metadata.token_endpoint, tokenResponse.refresh_token)
   assert.ok(refreshedTokenResponse.access_token)
   assert.ok(refreshedTokenResponse.id_token)
+})
+
+test('completes the authorization code + refresh token flow using the query-parameter policy form', async () => {
+  const discoveryResponse = await fetch(`${baseUrl}/oidc/.well-known/openid-configuration?p=${policy}`)
+  assert.equal(discoveryResponse.status, 200)
+  const metadata = await discoveryResponse.json()
+
+  const { code, codeVerifier } = await performLogin(metadata)
+  const tokenResponse = await exchangeCodeForTokens(metadata.token_endpoint, code, codeVerifier)
+  assert.ok(tokenResponse.refresh_token)
+  assert.equal(tokenResponse.scope, 'openid offline_access')
+
+  const idTokenClaims = decodeJwt(tokenResponse.id_token)
+  assert.equal(idTokenClaims.acr, policy)
 })
 
 test('logs the user out and destroys the session', async () => {
@@ -214,13 +231,14 @@ test('logs the user out and destroys the session', async () => {
   assert.match(await response.text(), /name="username"/)
 })
 
-test('logs out and redirects to the registered post_logout_redirect_uri', async () => {
+test('logs out and redirects to the registered post_logout_redirect_uri when id_token_hint is supplied', async () => {
   const metadata = await fetchMetadata()
-  const { jar } = await performLogin(metadata)
+  const { jar, code, codeVerifier } = await performLogin(metadata)
+  const { id_token: idToken } = await exchangeCodeForTokens(metadata.token_endpoint, code, codeVerifier)
   const postLogoutState = `state-${crypto.randomUUID()}`
 
   const endSessionUrl = new URL(metadata.end_session_endpoint)
-  endSessionUrl.searchParams.set('client_id', clientId)
+  endSessionUrl.searchParams.set('id_token_hint', idToken)
   endSessionUrl.searchParams.set('post_logout_redirect_uri', postLogoutRedirectUri)
   endSessionUrl.searchParams.set('state', postLogoutState)
 
@@ -251,6 +269,95 @@ test('logs out and redirects to the registered post_logout_redirect_uri', async 
   const location = new URL(response.headers.get('location'))
   assert.equal(location.origin + location.pathname, postLogoutRedirectUri)
   assert.equal(location.searchParams.get('state'), postLogoutState)
+})
+
+// Confirms POST /session/end is accepted (translated to an equivalent GET internally) while
+// POST /auth remains unsupported, since oidc-provider only ever registers a GET route for /auth.
+test('accepts a POST end_session request and applies the id_token_hint gate', async () => {
+  const metadata = await fetchMetadata()
+  const { jar, code, codeVerifier } = await performLogin(metadata)
+  const { id_token: idToken } = await exchangeCodeForTokens(metadata.token_endpoint, code, codeVerifier)
+
+  const response = await fetch(metadata.end_session_endpoint, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      cookie: cookieHeader(jar),
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      id_token_hint: idToken,
+      post_logout_redirect_uri: postLogoutRedirectUri
+    }).toString()
+  })
+  assert.equal(response.status, 200)
+  const logoutPage = await response.text()
+  assert.ok(logoutPage.match(/action="([^"]+)"/), 'expected logout form action in the confirmation page')
+})
+
+// Mirrors Azure AD B2C: without id_token_hint, post_logout_redirect_uri is ignored and the
+// provider's own success page is shown instead, even though the session still ends.
+test('logs out and shows the sign-out success page instead of redirecting when id_token_hint is not supplied', async () => {
+  const metadata = await fetchMetadata()
+  const { jar } = await performLogin(metadata)
+
+  const endSessionUrl = new URL(metadata.end_session_endpoint)
+  endSessionUrl.searchParams.set('client_id', clientId)
+  endSessionUrl.searchParams.set('post_logout_redirect_uri', postLogoutRedirectUri)
+
+  let response = await fetch(endSessionUrl, {
+    redirect: 'manual',
+    headers: { cookie: cookieHeader(jar) }
+  })
+  assert.equal(response.status, 200)
+  updateCookies(jar, response)
+  const logoutPage = await response.text()
+
+  const action = logoutPage.match(/action="([^"]+)"/)?.[1]
+  const xsrf = logoutPage.match(/name="xsrf" value="([^"]+)"/)?.[1]
+  assert.ok(action, 'expected logout form action in the confirmation page')
+  assert.ok(xsrf, 'expected an xsrf token in the confirmation page')
+
+  response = await fetch(action, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      cookie: cookieHeader(jar),
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({ xsrf, logout: 'yes' }).toString()
+  })
+  assert.equal(response.status, 303)
+  updateCookies(jar, response)
+
+  const location = new URL(response.headers.get('location'))
+  assert.notEqual(location.origin + location.pathname, postLogoutRedirectUri)
+
+  response = await fetch(location, {
+    redirect: 'manual',
+    headers: { cookie: cookieHeader(jar) }
+  })
+  assert.equal(response.status, 200)
+  assert.match(await response.text(), /Sign-out Success/)
+
+  // Regression: the session must still be fully destroyed, even without a redirect to the RP.
+  const authUrl = buildAuthUrl(metadata.authorization_endpoint, {
+    state: `state-${crypto.randomUUID()}`,
+    nonce: `nonce-${crypto.randomUUID()}`,
+    codeChallenge: generateCodeChallenge(generateCodeVerifier())
+  })
+
+  response = await fetch(authUrl, { redirect: 'manual', headers: { cookie: cookieHeader(jar) } })
+  assert.equal(response.status, 303)
+  updateCookies(jar, response)
+  const interactionPath = new URL(response.headers.get('location'), baseUrl).pathname
+
+  response = await fetch(`${baseUrl}${interactionPath}`, {
+    redirect: 'manual',
+    headers: { cookie: cookieHeader(jar) }
+  })
+  assert.equal(response.status, 200)
+  assert.match(await response.text(), /name="username"/)
 })
 
 test('rejects authorization request with unknown client_id', async () => {
