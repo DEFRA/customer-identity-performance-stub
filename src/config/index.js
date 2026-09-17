@@ -37,10 +37,15 @@ const db = {
   timeout: parseInt(process.env.MONGO_TIMEOUT || '5000', 10)
 }
 
+// Path to a JSON seed file of account documents, upserted (by sub, non-destructively) at
+// startup. Unset means the feature is off.
+const seedFilePath = process.env.SEED_FILE_PATH
+
 export default {
   port,
   host,
   isProduction,
   oidc,
-  db
+  db,
+  seedFilePath
 }

@@ -15,6 +15,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    # published so the host-side seed script can reach it; the app itself still uses the internal docker DNS name
+    ports:
+      - "27017:27017"
     volumes:
       - cidm-stub-db-data:/data/db
 
@@ -31,10 +34,13 @@ services:
       db:
         condition: service_healthy
     env_file: .env
+    environment:
+      SEED_FILE_PATH: /app/data/accounts.development.json
     command: npm run dev
     volumes:
       - ./src:/home/node/src
       - ./public:/home/node/public
+      - ./data/accounts.development.json:/app/data/accounts.development.json:ro
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
 

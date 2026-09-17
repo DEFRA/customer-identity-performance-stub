@@ -23,15 +23,7 @@
  *   - OIDC stub server running on http://localhost:3000
  *   - CLIENT_SECRET environment variable set
  *
- *   GNU-Linux/macOS
- *     CLIENT_SECRET=bar node scripts/test-oidc-auth-code-flow.js
- *
- *   Windows (PowerShell):
- *     $env:CLIENT_SECRET="bar"
- *     node scripts/test-oidc-auth-code-flow.js
- *
- *   Windows (Command Prompt):
- *     set CLIENT_SECRET=bar
+ *   Run with:
  *     node scripts/test-oidc-auth-code-flow.js
  *
  * WHAT HAPPENS:
@@ -53,10 +45,13 @@
  *   ✅ Authorization code flow test completed successfully!
  *
  * ENVIRONMENT VARIABLES:
- *   CLIENT_SECRET     (required) OAuth client secret (e.g., "bar")
+ *   CLIENT_SECRET     (optional) OAuth client secret (default: "bar")
  *   CLIENT_ID         (optional) OAuth client ID (default: "foo")
  *   OIDC_SERVER       (optional) OIDC server base URL (default: "http://localhost:3000")
  *   CALLBACK_PORT     (optional) Callback server port (default: 3001)
+ *   POLICY            (optional) Policy to use in the authorization request (default: "b2c_1a_signupsignin")
+ *   SERVICE_ID         (optional) Service ID to include in the authorization request (default: "b6f7b9be-4b3e-4b1a-9c3a-111111111111")
+ *   RELATIONSHIP_ID    (optional) Relationship ID to include in the authorization request
  */
 
 import http from 'http'
@@ -64,22 +59,15 @@ import crypto from 'crypto'
 import { execFile } from 'child_process'
 import { URL } from 'url'
 
-// Validate required environment variable
-if (!process.env.CLIENT_SECRET) {
-  console.error('❌ CLIENT_SECRET environment variable not set')
-  console.error('   Set it before running: export CLIENT_SECRET=bar')
-  console.error('   Or in one command: CLIENT_SECRET=bar node scripts/test-oidc-auth-code-flow.js')
-  process.exit(1)
-}
-
 const CONFIG = {
   clientId: process.env.CLIENT_ID || 'foo',
-  clientSecret: process.env.CLIENT_SECRET,
+  clientSecret: process.env.CLIENT_SECRET || 'bar',
   oidcServer: process.env.OIDC_SERVER || 'http://localhost:3000',
   callbackPort: parseInt(process.env.CALLBACK_PORT || '3001'),
   callbackUrl: `http://localhost:${process.env.CALLBACK_PORT || 3001}/cb`,
-  username: process.env.TEST_USERNAME || 'testuser@example.com',
-  policy: process.env.POLICY || 'b2c_1a_signupsignin'
+  policy: process.env.POLICY || 'b2c_1a_signupsignin',
+  serviceId: process.env.SERVICE_ID || 'b6f7b9be-4b3e-4b1a-9c3a-111111111111',
+  relationshipId: process.env.RELATIONSHIP_ID
 }
 
 /**
@@ -279,8 +267,11 @@ async function main () {
     console.log(`   Client ID: ${CONFIG.clientId}`)
     console.log(`   OIDC Server: ${CONFIG.oidcServer}`)
     console.log(`   Callback URL: ${CONFIG.callbackUrl}`)
-    console.log(`   Test username: ${CONFIG.username}`)
-    console.log(`   Policy: ${CONFIG.policy}\n`)
+    console.log(`   Policy: ${CONFIG.policy}`)
+    console.log(`   ServiceId: ${CONFIG.serviceId}\n`)
+    if (CONFIG.relationshipId) {
+      console.log(`   Relationship ID: ${CONFIG.relationshipId}\n`)
+    }
 
     // Step 1: Fetch OIDC discovery metadata
     const metadata = await fetchOidcMetadata()
@@ -300,6 +291,10 @@ async function main () {
     authUrl.searchParams.set('scope', 'openid offline_access')
     authUrl.searchParams.set('code_challenge', codeChallenge)
     authUrl.searchParams.set('code_challenge_method', 'S256')
+    authUrl.searchParams.set('serviceId', CONFIG.serviceId)
+    if (CONFIG.relationshipId) {
+      authUrl.searchParams.set('relationshipId', CONFIG.relationshipId)
+    }
     const sentState = 'test-state-' + Date.now()
     authUrl.searchParams.set('state', sentState)
     authUrl.searchParams.set('nonce', 'test-nonce-' + Date.now())

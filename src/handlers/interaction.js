@@ -3,7 +3,9 @@
  */
 
 import { once } from 'events'
-import provider, { TEST_ACCOUNT } from '../oidc/oidc-setup.js'
+import provider from '../oidc/oidc-setup.js'
+import accountRepository from '../repositories/account-repository.js'
+import authContextRepository from '../repositories/auth-context-repository.js'
 
 /**
  * Finish an interaction directly against the raw req/res, mirroring the OIDC callback handler
@@ -43,6 +45,7 @@ export const viewInteraction = async ({ raw: { req, res } }, h) => {
       grant.addOIDCClaims(prompt.details.missingOIDCClaims)
     }
     const grantId = await grant.save()
+    await authContextRepository.save(grantId, { serviceId: params.serviceId, relationshipId: params.relationshipId })
 
     return finishInteraction(req, res, { consent: { grantId } }, { mergeWithLastSubmission: true }, h)
   }
@@ -54,9 +57,14 @@ export const submitLogin = async ({ raw: { req, res }, payload }, h) => {
   const details = await provider.interactionDetails(req, res)
   const { username } = payload ?? {}
 
-  if (username === TEST_ACCOUNT.username) {
-    // the acr claim reflects the B2C policy used for this authorization request
-    const result = { login: { accountId: TEST_ACCOUNT.claims.sub, acr: details.params.p } }
+  const account = username ? await accountRepository.findByLoginIdentifier(username) : null
+
+  if (account) {
+    // acr/amr are session-level claims oidc-provider assembles itself from the login result
+    // (they always override whatever claims() returns), not from the account claims directly.
+    // CIDM's amr is a single string, not the array the OIDC spec suggests, and oidc-provider
+    // passes the value through unchanged, so it is passed straight through here as a string.
+    const result = { login: { accountId: account.sub, acr: details.params.p, amr: account.amr } }
     return finishInteraction(req, res, result, undefined, h)
   }
 

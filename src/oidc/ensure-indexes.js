@@ -3,6 +3,7 @@
  */
 
 import { getDb } from '../db/index.js'
+import { caseInsensitiveCollation } from '../repositories/account-repository.js'
 
 const grantable = new Set([
   'AccessToken',
@@ -122,4 +123,31 @@ export async function ensureOidcIndexes (db) {
       },
     ])
   }
+}
+
+// Matches oidc-provider's default Grant/RefreshToken/Session TTL (14 days) - the longest-lived
+// artifact that could still reference this context's grantId, since ttl isn't overridden here
+const authContextTtlSeconds = 60 * 60 * 24 * 14
+
+/**
+ * Create the indexes required by the accounts collection and the authContexts collection
+ * used to carry serviceId/relationshipId from the authorization request through to claims()
+ * @param {import('mongodb').Db} [db] - Database instance, injectable for testing
+ * @returns {Promise<void>}
+ */
+export async function ensureAccountIndexes (db) {
+  db ??= await getDb()
+
+  await createIndexesReplacingConflicts(db.collection('accounts'), [
+    { key: { sub: 1 }, unique: true },
+    { key: { contactId: 1 }, unique: true },
+    // sparse: SFI accounts have no uniqueReference at all, so multiple must be able to omit it
+    { key: { uniqueReference: 1 }, unique: true, sparse: true },
+    { key: { crn: 1 } },
+    { key: { email: 1 }, collation: caseInsensitiveCollation },
+  ])
+
+  await createIndexesReplacingConflicts(db.collection('authContexts'), [
+    { key: { createdAt: 1 }, expireAfterSeconds: authContextTtlSeconds },
+  ])
 }

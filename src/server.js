@@ -7,7 +7,8 @@ import config from './config/index.js'
 import { registerPlugins } from './plugins/index.js'
 import routes from './routes/index.js'
 import { connect, disconnect } from './db/index.js'
-import { ensureOidcIndexes } from './oidc/ensure-indexes.js'
+import { ensureOidcIndexes, ensureAccountIndexes } from './oidc/ensure-indexes.js'
+import { seedAccountsFromFile } from './db/seed-accounts-from-file.js'
 
 const server = Hapi.server({
   port: config.port,
@@ -17,6 +18,11 @@ const server = Hapi.server({
 // Connect to MongoDB on startup
 await connect()
 await ensureOidcIndexes()
+await ensureAccountIndexes()
+
+if (config.seedFilePath) {
+  await seedAccountsFromFile(config.seedFilePath)
+}
 
 // Register all plugins (views, static files, logging, etc.)
 await registerPlugins(server, config)
