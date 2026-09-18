@@ -56,6 +56,12 @@ const stripUnsupportedOption = (error, indexes) => {
     return indexes.map(({ expireAfterSeconds, ...index }) => index)
   }
 
+  // "collation" (InvalidIndexSpecificationOption) - Cosmos DB Emulator doesn't support custom
+  // collations; email lookups fall back to an exact-match index there (see account-repository.js)
+  if (error.code === 197 && indexes.some((index) => 'collation' in index)) {
+    return indexes.map(({ collation, ...index }) => index)
+  }
+
   return null
 }
 
@@ -95,6 +101,15 @@ async function createIndexesReplacingConflicts (collection, indexes, attempt = 0
   }
 }
 
+// Cosmos DB's Mongo API only supports TTL indexes on its internal _ts (last-modified) field,
+// not arbitrary fields like expiresAt/createdAt - this ceiling is a Cosmos-only safety net for
+// any document that ends up without a per-document ttl override (see mongodb-adapter.js).
+// On real MongoDB, _ts is never populated, so this index is a harmless no-op there.
+// NOTE: observed unreliable in practice on the Linux Cosmos DB Emulator specifically - expired
+// documents can persist well past both the per-document ttl and this fallback ceiling. Not
+// verified against a real Azure Cosmos DB for MongoDB account, which should honour it correctly.
+const cosmosFallbackTtlSeconds = 60 * 60 * 24 * 30
+
 /**
  * Create the indexes required by the OIDC provider's MongoDB adapter
  * @param {import('mongodb').Db} [db] - Database instance, injectable for testing
@@ -122,6 +137,10 @@ export async function ensureOidcIndexes (db) {
         key: { expiresAt: 1 },
         expireAfterSeconds: 0,
       },
+      {
+        key: { _ts: 1 },
+        expireAfterSeconds: cosmosFallbackTtlSeconds,
+      },
     ])
   }
 }
@@ -146,10 +165,12 @@ export async function ensureAccountIndexes (db) {
     // sparse: SFI accounts have no uniqueReference at all, so multiple must be able to omit it
     { key: { uniqueReference: 1 }, unique: true, sparse: true },
     { key: { crn: 1 } },
-    { key: { email: 1 }, collation: caseInsensitiveCollation },
+    { key: { email: 1 }, unique: true, collation: caseInsensitiveCollation },
   ])
 
   await createIndexesReplacingConflicts(db.collection('authContexts'), [
     { key: { createdAt: 1 }, expireAfterSeconds: authContextTtlSeconds },
+    // Cosmos DB-only fallback - see cosmosFallbackTtlSeconds above, inert on real MongoDB
+    { key: { _ts: 1 }, expireAfterSeconds: authContextTtlSeconds },
   ])
 }

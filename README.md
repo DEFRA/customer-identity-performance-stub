@@ -61,7 +61,7 @@ To run against the Azure Cosmos DB Emulator for MongoDB instead of the default M
 npm run compose:cosmos:up
 ```
 
-The override replaces the `db` service with the Linux emulator, enables its MongoDB 4.2 endpoint, and supplies the emulator connection string to the stub automatically. The application remains available at `http://localhost:3000`; the emulator exposes its data explorer at `https://localhost:8081` and its MongoDB endpoint at `localhost:10255`.
+The override replaces the `db` service with the Linux emulator, enables its MongoDB 4.2 endpoint, and supplies the emulator connection string to the stub automatically. The application remains available at `http://localhost:3000`; the emulator exposes its data explorer at `https://localhost:8081/_explorer/index.html` and its MongoDB endpoint at `localhost:10255`.
 
 Use the matching scripts to manage either stack:
 
@@ -74,6 +74,10 @@ Use the matching scripts to manage either stack:
 The `reset` scripts remove and recreate the selected stack. This deletes locally persisted emulator data; MongoDB data remains in its named volume.
 
 The emulator uses a self-signed certificate. Certificate validation is disabled only in the local emulator connection string and must not be used for remote or production database connections. The emulator can take a minute or more to become healthy and requires more memory than the standard MongoDB container.
+
+TTL-based expiry (sessions, tokens, grants, etc.) is best-effort on the Linux Cosmos DB Emulator specifically - its per-document TTL override has been observed not to reliably delete expired documents even after many minutes, unlike real MongoDB or Azure Cosmos DB for MongoDB. Don't rely on the emulator to verify expiry behavior; use the default MongoDB stack or a real Cosmos DB for MongoDB account for that.
+
+The emulator also rejects the case-insensitive `collation` option used on the `accounts.email` index; account login email matching falls back to case-sensitive on the emulator specifically, unlike real MongoDB or Azure Cosmos DB for MongoDB.
 
 The emulator image deliberately uses the floating `latest` tag. Pull the current image before starting when you need to test against the latest emulator release:
 
