@@ -4,6 +4,7 @@
 
 import { getDb } from '../db/index.js'
 import { caseInsensitiveCollation } from '../repositories/account-repository.js'
+import config from '../config/index.js'
 
 const grantable = new Set([
   'AccessToken',
@@ -125,9 +126,10 @@ export async function ensureOidcIndexes (db) {
   }
 }
 
-// Matches oidc-provider's default Grant/RefreshToken/Session TTL (14 days) - the longest-lived
-// artifact that could still reference this context's grantId, since ttl isn't overridden here
-const authContextTtlSeconds = 60 * 60 * 24 * 14
+// Matches oidc-provider's Grant TTL (see oidc-setup.js), the longest-lived artifact that
+// could still reference this context's grantId, even though Session/RefreshToken are
+// shorter-lived to mirror the real Defra CIDM B2C policy
+const authContextTtlSeconds = config.oidc.ttl.refreshTokenSeconds
 
 /**
  * Create the indexes required by the accounts collection and the authContexts collection

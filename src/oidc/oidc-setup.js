@@ -14,6 +14,7 @@ import accountRepository from '../repositories/account-repository.js'
 import authContextRepository from '../repositories/auth-context-repository.js'
 import { registerEventLogging } from './event-logging.js'
 import { logger } from '../logging/logger.js'
+import { refreshTokenTtl } from './refresh-token-ttl.js'
 
 const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -34,6 +35,24 @@ export const providerConfiguration = {
   enabledJWA: {
     idTokenSigningAlgValues: ['RS256']
   },
+  // Matches the real Defra CIDM Azure AD B2C policy's rolling session and token lifetimes
+  ttl: {
+    Session: () => config.oidc.ttl.sessionSeconds,
+    IdToken: () => config.oidc.ttl.idTokenSeconds,
+    AccessToken: () => config.oidc.ttl.accessTokenSeconds,
+    // token.totalLifetime() tracks elapsed time since the first token in the rotation chain,
+    // surviving rotation - this is what lets us enforce B2C's separate absolute/rolling caps
+    RefreshToken: (ctx, token) => refreshTokenTtl(token.totalLifetime(), config.oidc.ttl),
+    // A Grant must outlive every RefreshToken that references it, so tie it to the same
+    // absolute cap rather than oidc-provider's unrelated 14-day default
+    Grant: () => config.oidc.ttl.refreshTokenSeconds,
+    // No B2C equivalent to align to - kept at oidc-provider's own default, set explicitly
+    // only to silence its "default ttl.* function called" startup notice
+    Interaction: () => 60 * 60
+  },
+  // B2C issues a new refresh token on every redemption - match that instead of oidc-provider's
+  // default heuristic (which only rotates confidential-client tokens once 70% of ttl has passed)
+  rotateRefreshToken: () => true,
   scopes: ['openid', 'offline_access'],
   // Policy identifier and service/relationship selection preserved into the interaction
   // session for the authorize flow. This runs after redirect_uri/client_id are already

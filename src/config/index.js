@@ -29,7 +29,16 @@ const parseClientsFromEnv = () => {
 const oidc = {
   issuer: process.env.OIDC_ISSUER || publicUrl,
   signingKey: process.env.SIGNING_KEY,
-  clients: parseClientsFromEnv()
+  clients: parseClientsFromEnv(),
+  // Defaults match the real Defra CIDM Azure AD B2C policy's session/token lifetimes, so
+  // these are exposed as env vars purely for convenience and can normally stay unset.
+  ttl: {
+    sessionSeconds: parseInt(process.env.SESSION_TTL_SECONDS || '1800', 10),
+    idTokenSeconds: parseInt(process.env.ID_TOKEN_TTL_SECONDS || '1200', 10),
+    accessTokenSeconds: parseInt(process.env.ACCESS_TOKEN_TTL_SECONDS || '1200', 10),
+    refreshTokenSeconds: parseInt(process.env.REFRESH_TOKEN_TTL_SECONDS || '86400', 10),
+    refreshTokenRollingSeconds: parseInt(process.env.REFRESH_TOKEN_ROLLING_TTL_SECONDS || '86400', 10)
+  }
 }
 
 const db = {

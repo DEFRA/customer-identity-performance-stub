@@ -316,6 +316,13 @@ Environment variables are usually loaded from `.env` for local development.
 | `SEED_FILE_PATH` | No | set by Docker Compose | Path to a JSON seed file of accounts, loaded at startup. |
 | `LOG_LEVEL` | No | `info` in production, `debug` otherwise | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) for the whole app. |
 | `OIDC_LOG_LEVEL` | No | same as `LOG_LEVEL` | Overrides the log level for oidc-provider's own events only. |
+| `SESSION_TTL_SECONDS` | No | `1800` | Rolling SSO session idle timeout, matching the real Defra CIDM policy - rarely needs changing. |
+| `ID_TOKEN_TTL_SECONDS` | No | `1200` | ID token lifetime, matching the real Defra CIDM policy - rarely needs changing. |
+| `ACCESS_TOKEN_TTL_SECONDS` | No | `1200` | Access token lifetime, matching the real Defra CIDM policy - rarely needs changing. |
+| `REFRESH_TOKEN_TTL_SECONDS` | No | `86400` | Absolute refresh token lifetime since first issuance, matching the real Defra CIDM policy - rarely needs changing. |
+| `REFRESH_TOKEN_ROLLING_TTL_SECONDS` | No | `86400` | Per-use refresh token lifetime cap, matching the real Defra CIDM policy - rarely needs changing. |
+
+These lifetimes default to the values configured in the real Defra CIDM Azure AD B2C policy, so the stub's session and token expiry behavior matches production by default. They're exposed as environment variables mainly for convenience (e.g. shortening them for a specific test scenario) and typically should be left unset.
 
 To create a stable signing key for local or deployed test environments:
 

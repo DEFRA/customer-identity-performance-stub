@@ -176,6 +176,8 @@ test('completes the authorization code + refresh token flow and returns valid cl
   assert.equal(idTokenClaims.serviceId, serviceId)
   assert.deepEqual(idTokenClaims.roles, ['r1b2c3d4-0001-0001-0001-000000000001:Finance Officer:3'])
   assert.equal(idTokenClaims.enrolmentCount, 1)
+  // matches the real Defra CIDM B2C policy's id_token_lifetime_secs
+  assert.equal(idTokenClaims.exp - idTokenClaims.iat, 1200)
 
   const refreshedTokenResponse = await refreshTokens(metadata.token_endpoint, tokenResponse.refresh_token)
   assert.ok(refreshedTokenResponse.access_token)
