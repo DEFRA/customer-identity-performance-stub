@@ -362,6 +362,14 @@ npm run compose:reset
 
 The default MongoDB stack stores data in the `cidm-stub-db-data` named volume, so `npm run compose:down` does not remove account data. Remove that volume separately if you need a completely clean MongoDB database.
 
+To push changes into an already-running stack without recreating it, use [`scripts/upload-accounts.js`](scripts/upload-accounts.js) instead - unlike the startup seed mechanism, it upserts every account in the file (overwriting existing ones matched by `sub`, not just inserting new ones):
+
+```sh
+MONGO_URL="mongodb://mongoadmin:secret@localhost:27017/?authSource=admin" npm run upload:accounts
+```
+
+Add `-- --wipe` to delete all existing accounts first for a completely fresh load, or pass a different file path as the first argument. Set `MONGO_URL` to match wherever the script runs from (`localhost` on the host, as above, or `db` if run inside the Docker network).
+
 ## Running Outside Docker Compose
 
 The stub can run anywhere that can run the Docker image and reach a MongoDB-compatible database. It remains a test/performance/integration stub, not production identity infrastructure.
@@ -427,6 +435,7 @@ Common npm scripts:
 | `npm run compose:cosmos:up` | Start the stub using the Azure Cosmos DB Emulator override. |
 | `npm run compose:cosmos:down` | Stop and remove the Cosmos Emulator stack. |
 | `npm run compose:cosmos:reset` | Remove and recreate the Cosmos Emulator stack. |
+| `npm run upload:accounts` | Upsert `data/accounts.development.json` (or a given path) into an already-running stack's `accounts` collection; add `-- --wipe` to clear existing accounts first. |
 
 The standalone [`scripts/test-oidc-auth-code-flow.js`](scripts/test-oidc-auth-code-flow.js) script drives an interactive authorization-code flow against a running stub. It uses these helper variables:
 
