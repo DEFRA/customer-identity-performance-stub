@@ -4,6 +4,7 @@
  */
 
 import { calculateJwkThumbprint, exportJWK, generateKeyPair, importPKCS8 } from 'jose'
+import logger from '../logging/logger.js'
 
 const ALG = 'RS256'
 
@@ -13,10 +14,10 @@ export async function buildJwks (signingKeyBase64) {
   if (signingKeyBase64) {
     const pem = Buffer.from(signingKeyBase64, 'base64').toString('utf8')
     privateKey = await importPKCS8(pem, ALG, { extractable: true })
-    console.log('JWKS: using SIGNING_KEY (stable across restarts)')
+    logger.info('JWKS: using SIGNING_KEY (stable across restarts)')
   } else {
     ({ privateKey } = await generateKeyPair(ALG, { extractable: true }))
-    console.warn('JWKS: no SIGNING_KEY set - generated an ephemeral key; tokens will not survive a restart')
+    logger.warn('JWKS: no SIGNING_KEY set - generated an ephemeral key; tokens will not survive a restart')
   }
 
   const jwk = await exportJWK(privateKey)

@@ -12,6 +12,8 @@ import { OIDC_CLAIMS } from './claims.js'
 import { buildAccountClaims } from './claim-factory.js'
 import accountRepository from '../repositories/account-repository.js'
 import authContextRepository from '../repositories/auth-context-repository.js'
+import { registerEventLogging } from './event-logging.js'
+import { logger } from '../logging/logger.js'
 
 const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -98,6 +100,10 @@ export const providerConfiguration = {
 }
 
 const provider = new oidc.Provider(config.oidc.issuer, providerConfiguration)
+
+// Independently tunable via OIDC_LOG_LEVEL, since oidc-provider's event volume can be noisy
+const oidcLogger = logger.child({ component: 'oidc-provider' }, { level: config.log.oidcLevel })
+registerEventLogging(provider, oidcLogger)
 
 provider.use(extractPolicy)
 provider.use(redirectUnregisteredRedirectUri((id) => provider.Client.find(id)))

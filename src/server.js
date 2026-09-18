@@ -9,6 +9,7 @@ import routes from './routes/index.js'
 import { connect, disconnect } from './db/index.js'
 import { ensureOidcIndexes, ensureAccountIndexes } from './oidc/ensure-indexes.js'
 import { seedAccountsFromFile } from './db/seed-accounts-from-file.js'
+import logger from './logging/logger.js'
 
 const server = Hapi.server({
   port: config.port,
@@ -32,20 +33,20 @@ server.route(routes)
 
 // Handle unhandled rejections
 process.on('unhandledRejection', error => {
-  console.error(error)
+  logger.fatal({ err: error }, 'Unhandled rejection')
   process.exit(1)
 })
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
-  console.log('Shutting down...')
+  logger.info('Shutting down...')
   await server.stop()
   await disconnect()
   process.exit(0)
 })
 
 process.on('SIGTERM', async () => {
-  console.log('Shutting down...')
+  logger.info('Shutting down...')
   await server.stop()
   await disconnect()
   process.exit(0)
@@ -53,6 +54,6 @@ process.on('SIGTERM', async () => {
 
 // Start server
 await server.start()
-console.log(`Server running at ${server.info.uri}`)
+logger.info(`Server running at ${server.info.uri}`)
 
 export default server

@@ -5,6 +5,7 @@
 
 import { readFileSync } from 'node:fs'
 import { getDb } from './client.js'
+import logger from '../logging/logger.js'
 
 /**
  * @param {string} path
@@ -56,7 +57,7 @@ export async function seedAccountsFromFile (path, db) {
     }
   }
 
-  console.log(`Seed file ${path}: inserted ${inserted} of ${accounts.length} account(s) (${accounts.length - inserted} already existed)`)
+  logger.info(`Seed file ${path}: inserted ${inserted} of ${accounts.length} account(s) (${accounts.length - inserted} already existed)`)
 
   return { inserted, total: accounts.length }
 }

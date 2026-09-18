@@ -172,6 +172,7 @@ This stub is intentionally limited to local development, integration testing, an
 | OIDC Library | `node-oidc-provider` |
 | Database | MongoDB |
 | Signing | RS256 (JOSE/JWK) |
+| Logging | `pino` / `hapi-pino` |
 | Container | Docker (multi-stage build) |
 | Local Orchestration | Docker Compose |
 
@@ -313,6 +314,8 @@ Environment variables are usually loaded from `.env` for local development.
 | `MONGO_DB_NAME` | No | `cidm-stub` | MongoDB database name. |
 | `MONGO_TIMEOUT` | No | `5000` | MongoDB connection timeout in milliseconds. |
 | `SEED_FILE_PATH` | No | set by Docker Compose | Path to a JSON seed file of accounts, loaded at startup. |
+| `LOG_LEVEL` | No | `info` in production, `debug` otherwise | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) for the whole app. |
+| `OIDC_LOG_LEVEL` | No | same as `LOG_LEVEL` | Overrides the log level for oidc-provider's own events only. |
 
 To create a stable signing key for local or deployed test environments:
 
@@ -325,6 +328,12 @@ Set `SIGNING_KEY` to the base64 output. Keep this value secret in shared environ
 
 For `npm run dev` on host: use `mongodb://mongoadmin:secret@localhost:27017/?authSource=admin` (requires a local MongoDB with matching auth, see Option 2 above).
 When using the Cosmos DB Emulator Compose override, its `MONGO_URL` takes precedence over the value in `.env`.
+
+### Logging
+
+The stub uses [pino](https://github.com/pinojs/pino) via [hapi-pino](https://github.com/hapijs/hapi-pino) for structured request logging, plus a shared `logger` (in `src/logging/logger.js`) for startup/lifecycle messages and oidc-provider's own events (`src/oidc/event-logging.js`). Output is pretty-printed outside production and newline-delimited JSON in production. Sensitive fields (`Authorization`/`Cookie` headers, client secrets) are redacted.
+
+To forward logs to Azure Application Insights, add an `applicationinsights`-backed target to `buildTargets()` in `src/logging/logger.js`, gated behind an env var such as `APPLICATIONINSIGHTS_CONNECTION_STRING` - the rest of the logging setup requires no changes. Note this only ships pino log lines as App Insights traces; request/dependency/exception telemetry needs separate OpenTelemetry instrumentation (e.g. `@azure/monitor-opentelemetry`).
 
 ## Data Management
 
