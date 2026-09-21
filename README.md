@@ -146,7 +146,7 @@ The supported policy IDs are `b2c_1a_signupsignin`, `b2c_1a_signupsigninalt`, an
 To smoke-test the full authorization-code flow against a running stub, use:
 
 ```sh
-CLIENT_ID=local-test-client CLIENT_SECRET=local-test-secret TEST_USERNAME=alice.standard@example.com node scripts/test-oidc-auth-code-flow.js
+CLIENT_ID=local-test-client CLIENT_SECRET=local-test-secret node scripts/test-oidc-auth-code-flow.js
 ```
 
 The client values must match a client registered through `OIDC_CLIENTS`, and the selected `TEST_USERNAME` must exist in the `accounts` collection.
@@ -226,6 +226,7 @@ A side effect of this is that there are no schema migrations. If the CIDM token 
 | `contactId` | string | Yes | `contactId` |
 | `uniqueReference` | string | No | `uniqueReference` (omitted from the token if absent) |
 | `loa` | number (0–3) | Yes | `loa` |
+| `aal` | number (1–2) | Yes | `aal` |
 | `amr` | string | Yes | `amr` |
 | `relationships` | array | Yes | `relationships` and `roles` (formatted, see below) |
 
@@ -441,13 +442,13 @@ The standalone [`scripts/test-oidc-auth-code-flow.js`](scripts/test-oidc-auth-co
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
-| `CLIENT_SECRET` | Yes | none | Secret for the registered OIDC client. |
 | `CLIENT_ID` | No | `foo` | Client ID to use. |
+| `CLIENT_SECRET` | No | `bar` | OIDC client secret. |
 | `OIDC_SERVER` | No | `http://localhost:3000` | Stub base URL. |
 | `CALLBACK_PORT` | No | `3001` | Local callback listener port. |
-| `TEST_USERNAME` | No | `alice.standard@example.com` | Seeded account email or CRN to sign in with. |
 | `POLICY` | No | `b2c_1a_signupsignin` | Policy ID to request. |
 | `SERVICE_ID` | No | `b6f7b9be-4b3e-4b1a-9c3a-111111111111` | Service ID used for role filtering. |
+| `RELATIONSHIP_ID` | No | none | Relationship ID used for role filtering. |
 
 ### Pull Request Validation
 

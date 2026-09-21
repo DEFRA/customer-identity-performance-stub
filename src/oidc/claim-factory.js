@@ -47,6 +47,7 @@ export function buildAccountClaims (account, { serviceId, relationshipId } = {})
     contactId: account.contactId,
     ...(account.uniqueReference !== undefined && { uniqueReference: account.uniqueReference }),
     loa: account.loa,
+    aal: account.aal,
     amr: account.amr,
     serviceId,
     correlationId: crypto.randomUUID(),

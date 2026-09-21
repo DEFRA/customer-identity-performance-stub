@@ -6,7 +6,8 @@
         "lastName": "Standard",
         "contactId": "a1b2c3d4-0001-0001-0001-aabbccdd0001",
         "uniqueReference": "AAA-0001-BB-00001",
-        "loa": 2,
+        "loa": 1,
+        "aal": 1,
         "amr": "scp",
         "relationships": [
             {
@@ -35,6 +36,7 @@
         "contactId": "a1b2c3d4-0002-0002-0002-aabbccdd0002",
         "uniqueReference": "AAA-0002-BB-00002",
         "loa": 1,
+        "aal": 1,
         "amr": "one",
         "relationships": [
             {
@@ -56,7 +58,8 @@
         "firstName": "Carol",
         "lastName": "Sfi",
         "contactId": "1000000003",
-        "loa": 2,
+        "loa": 1,
+        "aal": 1,
         "amr": "cap",
         "relationships": [
             {
@@ -85,6 +88,7 @@
         "contactId": "a1b2c3d4-0001-0001-0001-aabbccdd0004",
         "uniqueReference": "AAA-0003-BB-00003",
         "loa": 1,
+        "aal": 1,
         "amr": "one",
         "relationships": [
             {
@@ -138,7 +142,8 @@
         "lastName": "Citizen",
         "contactId": "a1b2c3d4-0008-0008-0008-aabbccdd0008",
         "uniqueReference": "AAA-0008-BB-00008",
-        "loa": 2,
+        "loa": 1,
+        "aal": 1,
         "amr": "scp",
         "relationships": [
             {
@@ -164,6 +169,7 @@
         "contactId": "a1b2c3d4-0010-0010-0010-aabbccdd0010",
         "uniqueReference": "AAA-0010-BB-00010",
         "loa": 1,
+        "aal": 1,
         "amr": "one",
         "relationships": []
     }

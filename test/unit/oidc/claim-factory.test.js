@@ -11,7 +11,8 @@ function createAccount (overrides = {}) {
     lastName: 'Standard',
     contactId: 'contact-1',
     uniqueReference: 'unique-1',
-    loa: 2,
+    loa: 1,
+    aal: 1,
     amr: 'scp',
     relationships: [
       {
@@ -54,7 +55,8 @@ describe('buildAccountClaims', () => {
     assert.equal(claims.lastName, 'Standard')
     assert.equal(claims.contactId, 'contact-1')
     assert.equal(claims.uniqueReference, 'unique-1')
-    assert.equal(claims.loa, 2)
+    assert.equal(claims.loa, 1)
+    assert.equal(claims.aal, 1)
     assert.equal(claims.amr, 'scp')
     assert.equal(claims.serviceId, 'service-a')
   })
