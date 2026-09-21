@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for AI coding agents working on the DEFRA CIDM Stub.
+Guidance for AI coding agents working on the Defra CIDM Stub.
 
 ## Dev environment tips
 - Use Node.js 24 LTS. The package declares `>=24 <25`.
@@ -37,7 +37,7 @@ Guidance for AI coding agents working on the DEFRA CIDM Stub.
 - Run the full local integration flow with `npm run test:integration:local`; it starts Docker Compose, waits for readiness, runs tests, and cleans up.
 - Use `npm run test:integration:local` when the integration OIDC client should be provisioned automatically; `npm run compose:test:up` only starts the stack and requires `OIDC_CLIENTS` to be set.
 - The integration auth flow expects the default test client unless overridden: `CLIENT_ID=integration-test-client`, `CLIENT_SECRET=integration-test-secret`, and redirect URI `http://localhost:3001/cb`.
-- Use one-off environment prefixes for local test overrides, for example `TEST_USERNAME=testuser@example.com npm run test:integration:local`.
+- Use one-off environment prefixes for local test overrides, for example `TEST_USERNAME=alice.standard@example.com npm run test:integration:local`.
 - Keep integration coverage balanced. Prefer focused unit tests for response-mode permutations and edge cases unless the end-to-end wiring is the risk being tested.
 - Add or update tests for behavior changes, especially OIDC request validation, token shape, policy routing, health checks, database adapters, and Docker-backed startup behavior.
 - When you have fixed a bug check if there is any new unit or integration test worth adding as well.

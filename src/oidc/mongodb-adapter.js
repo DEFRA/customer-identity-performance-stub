@@ -19,15 +19,20 @@ class MongoAdapter {
    */
   async upsert (_id, payload, expiresIn) {
     let expiresAt
+    let ttl
 
     if (expiresIn) {
       expiresAt = new Date(Date.now() + (expiresIn * 1000))
+      // Cosmos DB's per-document TTL override (see ensure-indexes.js) - ignored by real
+      // MongoDB, which has no special meaning for a root-level "ttl" field. Observed
+      // unreliable on the Linux Cosmos DB Emulator; expiresAt is what real MongoDB relies on
+      ttl = Math.floor(expiresIn)
     }
 
     const coll = await this.coll()
     await coll.updateOne(
       { _id },
-      { $set: { payload, ...(expiresAt ? { expiresAt } : {}) } },
+      { $set: { payload, ...(expiresAt ? { expiresAt, ttl } : {}) } },
       { upsert: true }
     )
   }
@@ -100,6 +105,9 @@ class MongoAdapter {
 
   /**
    * Mark a document as consumed
+   * NOTE: on Cosmos DB, this write bumps the document's internal _ts (last-modified) field,
+   *   which restarts that document's TTL countdown there - a consumed document can outlive
+   *   its intended expiry slightly on Cosmos DB, though not on real MongoDB (expiresAt is unchanged)
    * @param {string} _id - The document ID
    */
   async consume (_id) {

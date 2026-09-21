@@ -1,4 +1,4 @@
-// Mirrors Azure AD B2C: RP-Initiated Logout only redirects back to post_logout_redirect_uri
+// Mirrors CIDM B2C: RP-Initiated Logout only redirects back to post_logout_redirect_uri
 // when id_token_hint is also supplied. Without it, the session still ends but the provider's
 // own sign-out success page is shown instead of redirecting to the RP. oidc-provider has no
 // configuration hook for this - stripping the param upstream is the only way to prevent

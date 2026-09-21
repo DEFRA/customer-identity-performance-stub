@@ -3,6 +3,7 @@
  */
 
 import { getDb } from './client.js'
+import logger from '../logging/logger.js'
 
 /**
  * Connect to MongoDB with error handling
@@ -15,9 +16,9 @@ export async function connect () {
 
     // Verify connection with a simple ping
     await db.admin().ping()
-    console.log('Connected to MongoDB successfully')
+    logger.info('Connected to MongoDB successfully')
   } catch (error) {
-    console.error('Failed to connect to MongoDB:', error.message)
+    logger.error({ err: error }, 'Failed to connect to MongoDB')
     throw error
   }
 }
@@ -32,10 +33,10 @@ export async function disconnect () {
     const client = getClient()
     if (client) {
       await client.close()
-      console.log('Disconnected from MongoDB')
+      logger.info('Disconnected from MongoDB')
     }
   } catch (error) {
-    console.error('Error disconnecting from MongoDB:', error.message)
+    logger.error({ err: error }, 'Error disconnecting from MongoDB')
   }
 }
 

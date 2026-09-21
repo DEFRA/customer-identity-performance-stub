@@ -3,6 +3,9 @@
  */
 
 import { getDb } from '../db/index.js'
+import { caseInsensitiveCollation } from '../repositories/account-repository.js'
+import config from '../config/index.js'
+import logger from '../logging/logger.js'
 
 const grantable = new Set([
   'AccessToken',
@@ -54,6 +57,12 @@ const stripUnsupportedOption = (error, indexes) => {
     return indexes.map(({ expireAfterSeconds, ...index }) => index)
   }
 
+  // "collation" (InvalidIndexSpecificationOption) - Cosmos DB Emulator doesn't support custom
+  // collations; email lookups fall back to an exact-match index there (see account-repository.js)
+  if (error.code === 197 && indexes.some((index) => 'collation' in index)) {
+    return indexes.map(({ collation, ...index }) => index)
+  }
+
   return null
 }
 
@@ -68,7 +77,10 @@ const stripUnsupportedOption = (error, indexes) => {
 async function createIndexesReplacingConflicts (collection, indexes, attempt = 0) {
   try {
     await collection.createIndexes(indexes)
+    logger.info(`mongo indexes created successfully for collection ${collection.collectionName}`)
   } catch (error) {
+    logger.warn(`mongo indexes creation error for collection ${collection.collectionName}: ${error} - code will retry with best effort`)
+
     if (isTransientServiceUnavailable(error) && attempt < maxTransientRetries) {
       await delay(Math.min(500 * (attempt + 1), maxRetryDelayMs))
       return createIndexesReplacingConflicts(collection, indexes, attempt + 1)
@@ -90,8 +102,18 @@ async function createIndexesReplacingConflicts (collection, indexes, attempt = 0
     }
 
     await collection.createIndexes(indexes)
+    logger.info(`mongo indexes created successfully after resolving conflicts for collection ${collection.collectionName}`)
   }
 }
+
+// Cosmos DB's Mongo API only supports TTL indexes on its internal _ts (last-modified) field,
+// not arbitrary fields like expiresAt/createdAt - this ceiling is a Cosmos-only safety net for
+// any document that ends up without a per-document ttl override (see mongodb-adapter.js).
+// On real MongoDB, _ts is never populated, so this index is a harmless no-op there.
+// NOTE: observed unreliable in practice on the Linux Cosmos DB Emulator specifically - expired
+// documents can persist well past both the per-document ttl and this fallback ceiling. Not
+// verified against a real Azure Cosmos DB for MongoDB account, which should honour it correctly.
+const cosmosFallbackTtlSeconds = 60 * 60 * 24 * 30
 
 /**
  * Create the indexes required by the OIDC provider's MongoDB adapter
@@ -120,6 +142,40 @@ export async function ensureOidcIndexes (db) {
         key: { expiresAt: 1 },
         expireAfterSeconds: 0,
       },
+      {
+        key: { _ts: 1 },
+        expireAfterSeconds: cosmosFallbackTtlSeconds,
+      },
     ])
   }
+}
+
+// Matches oidc-provider's Grant TTL (see oidc-setup.js), the longest-lived artifact that
+// could still reference this context's grantId, even though Session/RefreshToken are
+// shorter-lived to mirror the real Defra CIDM B2C policy
+const authContextTtlSeconds = config.oidc.ttl.refreshTokenSeconds
+
+/**
+ * Create the indexes required by the accounts collection and the authContexts collection
+ * used to carry serviceId/relationshipId from the authorization request through to claims()
+ * @param {import('mongodb').Db} [db] - Database instance, injectable for testing
+ * @returns {Promise<void>}
+ */
+export async function ensureAccountIndexes (db) {
+  db ??= await getDb()
+
+  await createIndexesReplacingConflicts(db.collection('accounts'), [
+    { key: { sub: 1 }, unique: true },
+    { key: { contactId: 1 }, unique: true },
+    // sparse: SFI accounts have no uniqueReference at all, so multiple must be able to omit it
+    { key: { uniqueReference: 1 }, unique: true, sparse: true },
+    { key: { crn: 1 } },
+    { key: { email: 1 }, unique: true, collation: caseInsensitiveCollation },
+  ])
+
+  await createIndexesReplacingConflicts(db.collection('authContexts'), [
+    { key: { createdAt: 1 }, expireAfterSeconds: authContextTtlSeconds },
+    // Cosmos DB-only fallback - see cosmosFallbackTtlSeconds above, inert on real MongoDB
+    { key: { _ts: 1 }, expireAfterSeconds: authContextTtlSeconds },
+  ])
 }

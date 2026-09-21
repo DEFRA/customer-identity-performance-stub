@@ -1,0 +1,177 @@
+[
+    {
+        "sub": "a1b2c3d4-0001-0001-0001-000000000001",
+        "email": "alice.standard@example.com",
+        "firstName": "Alice",
+        "lastName": "Standard",
+        "contactId": "a1b2c3d4-0001-0001-0001-aabbccdd0001",
+        "uniqueReference": "AAA-0001-BB-00001",
+        "loa": 1,
+        "aal": 1,
+        "amr": "scp",
+        "relationships": [
+            {
+                "relationshipId": "r1b2c3d4-0001-0001-0001-000000000001",
+                "organisationId": "o1b2c3d4-0001-0001-0001-000000000001",
+                "organisationName": "Acme Farm Ltd",
+                "organisationLoa": 2,
+                "relationship": "Employee",
+                "relationshipLoa": 2,
+                "roles": [
+                    {
+                        "serviceId": "b6f7b9be-4b3e-4b1a-9c3a-111111111111",
+                        "roleName": "Finance Officer",
+                        "status": 3
+                    }
+                ],
+                "enrolmentRequestCount": 0
+            }
+        ]
+    },
+    {
+        "sub": "a1b2c3d4-0002-0002-0002-000000000002",
+        "email": "bob.alt@example.com",
+        "firstName": "Bob",
+        "lastName": "Alt",
+        "contactId": "a1b2c3d4-0002-0002-0002-aabbccdd0002",
+        "uniqueReference": "AAA-0002-BB-00002",
+        "loa": 1,
+        "aal": 1,
+        "amr": "one",
+        "relationships": [
+            {
+                "relationshipId": "r1b2c3d4-0002-0002-0002-000000000002",
+                "organisationId": "o1b2c3d4-0002-0002-0002-000000000002",
+                "organisationName": "Beta Holdings Ltd",
+                "organisationLoa": 1,
+                "relationship": "Agent",
+                "relationshipLoa": 1,
+                "roles": [],
+                "enrolmentRequestCount": 0
+            }
+        ]
+    },
+    {
+        "sub": "a1b2c3d4-0003-0003-0003-000000000003",
+        "email": "carol.sfi@example.com",
+        "crn": "1000000003",
+        "firstName": "Carol",
+        "lastName": "Sfi",
+        "contactId": "1000000003",
+        "loa": 1,
+        "aal": 1,
+        "amr": "cap",
+        "relationships": [
+            {
+                "relationshipId": "2000000003",
+                "organisationId": "3000000003",
+                "organisationName": "Gamma Arable Farm",
+                "organisationLoa": 2,
+                "relationship": "External",
+                "relationshipLoa": 2,
+                "roles": [
+                    {
+                        "serviceId": "b6f7b9be-4b3e-4b1a-9c3a-222222222222",
+                        "roleName": "Reader",
+                        "status": 3
+                    }
+                ],
+                "enrolmentRequestCount": 1
+            }
+        ]
+    },
+    {
+        "sub": "a1b2c3d4-0001-0001-0001-000000000004",
+        "email": "john.multiple@example.com",
+        "firstName": "John",
+        "lastName": "Multiple",
+        "contactId": "a1b2c3d4-0001-0001-0001-aabbccdd0004",
+        "uniqueReference": "AAA-0003-BB-00003",
+        "loa": 1,
+        "aal": 1,
+        "amr": "one",
+        "relationships": [
+            {
+                "relationshipId": "r1b2c3d4-0001-0001-0001-000000000004",
+                "organisationId": "o1b2c3d4-0001-0001-0001-000000000004",
+                "organisationName": "Best Trading Ltd",
+                "organisationLoa": 1,
+                "relationship": "Employee",
+                "relationshipLoa": 1,
+                "roles": [
+                    {
+                        "serviceId": "b6f7b9be-4b3e-4b1a-9c3a-111111111111",
+                        "roleName": "Broker",
+                        "status": 3
+                    },
+                    {
+                        "serviceId": "b6f7b9be-4b3e-4b1a-9c3a-111111111111",
+                        "roleName": "Reader",
+                        "status": 3
+                    }
+                ],
+                "enrolmentRequestCount": 0
+            },
+            {
+                "relationshipId": "r1b2c3d4-0001-0001-0001-000000000005",
+                "organisationId": "o1b2c3d4-0001-0001-0001-000000000005",
+                "organisationName": "Super Agri Ltd",
+                "organisationLoa": 1,
+                "relationship": "Employee",
+                "relationshipLoa": 1,
+                "roles": [
+                    {
+                        "serviceId": "b6f7b9be-4b3e-4b1a-9c3a-111111111111",
+                        "roleName": "Farmer",
+                        "status": 3
+                    },
+                    {
+                        "serviceId": "b6f7b9be-4b3e-4b1a-9c3a-333333333333",
+                        "roleName": "CEO",
+                        "status": 3
+                    }
+                ],
+                "enrolmentRequestCount": 0
+            }
+        ]
+    },
+    {
+        "sub": "a1b2c3d4-0008-0008-0008-000000000008",
+        "email": "grace.citizen@example.com",
+        "firstName": "Grace",
+        "lastName": "Citizen",
+        "contactId": "a1b2c3d4-0008-0008-0008-aabbccdd0008",
+        "uniqueReference": "AAA-0008-BB-00008",
+        "loa": 1,
+        "aal": 1,
+        "amr": "scp",
+        "relationships": [
+            {
+                "relationshipId": "r1b2c3d4-0008-0008-0008-000000000008",
+                "relationship": "Citizen",
+                "relationshipLoa": 0,
+                "roles": [
+                    {
+                        "serviceId": "b6f7b9be-4b3e-4b1a-9c3a-111111111111",
+                        "roleName": "Applicant",
+                        "status": 2
+                    }
+                ],
+                "enrolmentRequestCount": 0
+            }
+        ]
+    },
+    {
+        "sub": "a1b2c3d4-0010-0010-0010-000000000010",
+        "email": "ivan.norelationships@example.com",
+        "firstName": "Ivan",
+        "lastName": "Norelationships",
+        "contactId": "a1b2c3d4-0010-0010-0010-aabbccdd0010",
+        "uniqueReference": "AAA-0010-BB-00010",
+        "loa": 1,
+        "aal": 1,
+        "amr": "one",
+        "relationships": []
+    }
+]
+

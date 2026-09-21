@@ -7,8 +7,10 @@ const clientId = process.env.CLIENT_ID || 'integration-test-client'
 const clientSecret = process.env.CLIENT_SECRET || 'integration-test-secret'
 const redirectUri = 'http://localhost:3001/cb'
 const postLogoutRedirectUri = 'http://localhost:3001/logout'
-const username = process.env.TEST_USERNAME || 'testuser@example.com'
+const username = process.env.TEST_USERNAME || 'alice.standard@example.com'
 const policy = 'b2c_1a_signupsignin'
+// must be a GUID - matches the seeded alice.standard account's Finance Officer role
+const serviceId = 'b6f7b9be-4b3e-4b1a-9c3a-111111111111'
 
 function generateCodeVerifier () {
   return crypto.randomBytes(32).toString('base64url')
@@ -40,7 +42,7 @@ async function fetchMetadata () {
   return response.json()
 }
 
-function buildAuthUrl (authorizationEndpoint, { state, nonce, codeChallenge }) {
+function buildAuthUrl (authorizationEndpoint, { state, nonce, codeChallenge, serviceId: serviceIdOverride, relationshipId }) {
   const authUrl = new URL(authorizationEndpoint)
   authUrl.searchParams.set('client_id', clientId)
   authUrl.searchParams.set('redirect_uri', redirectUri)
@@ -48,6 +50,10 @@ function buildAuthUrl (authorizationEndpoint, { state, nonce, codeChallenge }) {
   authUrl.searchParams.set('scope', 'openid offline_access')
   authUrl.searchParams.set('code_challenge', codeChallenge)
   authUrl.searchParams.set('code_challenge_method', 'S256')
+  authUrl.searchParams.set('serviceId', serviceIdOverride ?? serviceId)
+  if (relationshipId) {
+    authUrl.searchParams.set('relationshipId', relationshipId)
+  }
   authUrl.searchParams.set('state', state)
   authUrl.searchParams.set('nonce', nonce)
   return authUrl
@@ -55,14 +61,16 @@ function buildAuthUrl (authorizationEndpoint, { state, nonce, codeChallenge }) {
 
 // Drives the headless login (no browser): follows the same redirect chain a browser would,
 // forwarding cookies manually since fetch has no built-in cookie jar.
-async function performLogin (metadata, jar = new Map()) {
+async function performLogin (metadata, jar = new Map(), { username: usernameOverride, serviceId: serviceIdOverride, relationshipId } = {}) {
   const codeVerifier = generateCodeVerifier()
   const state = `state-${crypto.randomUUID()}`
   const nonce = `nonce-${crypto.randomUUID()}`
   const authUrl = buildAuthUrl(metadata.authorization_endpoint, {
     state,
     nonce,
-    codeChallenge: generateCodeChallenge(codeVerifier)
+    codeChallenge: generateCodeChallenge(codeVerifier),
+    serviceId: serviceIdOverride,
+    relationshipId
   })
 
   let response = await fetch(authUrl, { redirect: 'manual' })
@@ -85,7 +93,7 @@ async function performLogin (metadata, jar = new Map()) {
       cookie: cookieHeader(jar),
       'Content-Type': 'application/x-www-form-urlencoded'
     },
-    body: new URLSearchParams({ username }).toString()
+    body: new URLSearchParams({ username: usernameOverride ?? username }).toString()
   })
   assert.equal(response.status, 303)
   updateCookies(jar, response)
@@ -157,14 +165,44 @@ test('completes the authorization code + refresh token flow and returns valid cl
   assert.equal(tokenResponse.scope, 'openid offline_access')
 
   const idTokenClaims = decodeJwt(tokenResponse.id_token)
-  assert.equal(idTokenClaims.sub, 'testuser')
-  assert.equal(idTokenClaims.contactId, 'contact-1')
-  assert.equal(idTokenClaims.email, 'testuser@example.com')
+  assert.equal(idTokenClaims.sub, 'a1b2c3d4-0001-0001-0001-000000000001')
+  assert.equal(idTokenClaims.contactId, 'a1b2c3d4-0001-0001-0001-aabbccdd0001')
+  assert.equal(idTokenClaims.email, 'alice.standard@example.com')
   assert.equal(idTokenClaims.acr, policy)
+  assert.equal(idTokenClaims.currentRelationshipId, 'r1b2c3d4-0001-0001-0001-000000000001')
+  assert.deepEqual(idTokenClaims.relationships, [
+    'r1b2c3d4-0001-0001-0001-000000000001:o1b2c3d4-0001-0001-0001-000000000001:Acme Farm Ltd:2:Employee:2'
+  ])
+  assert.equal(idTokenClaims.serviceId, serviceId)
+  assert.deepEqual(idTokenClaims.roles, ['r1b2c3d4-0001-0001-0001-000000000001:Finance Officer:3'])
+  assert.equal(idTokenClaims.enrolmentCount, 1)
+  // matches the real Defra CIDM B2C policy's id_token_lifetime_secs
+  assert.equal(idTokenClaims.exp - idTokenClaims.iat, 1200)
 
   const refreshedTokenResponse = await refreshTokens(metadata.token_endpoint, tokenResponse.refresh_token)
   assert.ok(refreshedTokenResponse.access_token)
   assert.ok(refreshedTokenResponse.id_token)
+})
+
+test('narrows relationships and roles to the requested relationshipId', async () => {
+  const metadata = await fetchMetadata()
+  // john.multiple has two relationships; only r...005 has a role for this serviceId
+  const johnServiceId = 'b6f7b9be-4b3e-4b1a-9c3a-333333333333'
+  const johnRelationshipId = 'r1b2c3d4-0001-0001-0001-000000000005'
+  const { code, codeVerifier } = await performLogin(metadata, new Map(), {
+    username: 'john.multiple@example.com',
+    serviceId: johnServiceId,
+    relationshipId: johnRelationshipId
+  })
+
+  const tokenResponse = await exchangeCodeForTokens(metadata.token_endpoint, code, codeVerifier)
+  const idTokenClaims = decodeJwt(tokenResponse.id_token)
+
+  assert.equal(idTokenClaims.currentRelationshipId, johnRelationshipId)
+  assert.deepEqual(idTokenClaims.relationships, [
+    'r1b2c3d4-0001-0001-0001-000000000005:o1b2c3d4-0001-0001-0001-000000000005:Super Agri Ltd:1:Employee:1'
+  ])
+  assert.deepEqual(idTokenClaims.roles, ['r1b2c3d4-0001-0001-0001-000000000005:CEO:3'])
 })
 
 test('completes the authorization code + refresh token flow using the query-parameter policy form', async () => {
@@ -295,7 +333,7 @@ test('accepts a POST end_session request and applies the id_token_hint gate', as
   assert.ok(logoutPage.match(/action="([^"]+)"/), 'expected logout form action in the confirmation page')
 })
 
-// Mirrors Azure AD B2C: without id_token_hint, post_logout_redirect_uri is ignored and the
+// Mirrors CIDM B2C: without id_token_hint, post_logout_redirect_uri is ignored and the
 // provider's own success page is shown instead, even though the session still ends.
 test('logs out and shows the sign-out success page instead of redirecting when id_token_hint is not supplied', async () => {
   const metadata = await fetchMetadata()
@@ -395,5 +433,27 @@ test('rejects authorization request with unknown redirect_uri', async () => {
   assert.equal(location.origin + location.pathname, redirectUri)
   assert.equal(location.searchParams.get('error'), 'invalid_request')
   assert.ok(location.searchParams.get('error_description'))
+  assert.equal(location.searchParams.get('state'), testState)
+})
+
+test('rejects authorization request with a missing serviceId', async () => {
+  const metadata = await fetchMetadata()
+  const testState = `state-${crypto.randomUUID()}`
+  const authUrl = new URL(metadata.authorization_endpoint)
+  authUrl.searchParams.set('client_id', clientId)
+  authUrl.searchParams.set('redirect_uri', redirectUri)
+  authUrl.searchParams.set('response_type', 'code')
+  authUrl.searchParams.set('scope', 'openid offline_access')
+  authUrl.searchParams.set('code_challenge', generateCodeChallenge(generateCodeVerifier()))
+  authUrl.searchParams.set('code_challenge_method', 'S256')
+  authUrl.searchParams.set('state', testState)
+  authUrl.searchParams.set('nonce', `nonce-${crypto.randomUUID()}`)
+
+  const response = await fetch(authUrl, { redirect: 'manual' })
+  assert.equal(response.status, 303)
+  const location = new URL(response.headers.get('location'))
+  assert.equal(location.origin + location.pathname, redirectUri)
+  assert.equal(location.searchParams.get('error'), 'server_error')
+  assert.match(location.searchParams.get('error_description'), /ServiceId/)
   assert.equal(location.searchParams.get('state'), testState)
 })

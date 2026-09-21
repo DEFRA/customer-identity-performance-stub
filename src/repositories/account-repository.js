@@ -8,6 +8,10 @@ import { getDb } from '../db/client.js'
 
 const COLLECTION_NAME = 'accounts'
 
+// Shared with the email index's collation in ensure-indexes.js - a query's collation must
+// match an index's collation exactly for MongoDB to use that index for it
+export const caseInsensitiveCollation = { locale: 'en', strength: 2 }
+
 /**
  * Get or create the accounts collection
  * @returns {Promise<Collection>}
@@ -81,10 +85,35 @@ export async function deleteById (id) {
   return result.deletedCount > 0
 }
 
+/**
+ * Find an account by its token subject identifier
+ * @param {string} sub - Account sub claim
+ * @returns {Promise<object|null>} Account or null if not found
+ */
+export async function findBySub (sub) {
+  const collection = await getCollection()
+  return collection.findOne({ sub })
+}
+
+/**
+ * Find an account by the identifier entered at login (email, case-insensitive, or CRN)
+ * @param {string} identifier - Submitted email address or CRN
+ * @returns {Promise<object|null>} Account or null if not found
+ */
+export async function findByLoginIdentifier (identifier) {
+  const collection = await getCollection()
+  return collection.findOne(
+    { $or: [{ email: identifier }, { crn: identifier }] },
+    { collation: caseInsensitiveCollation }
+  )
+}
+
 export default {
   create,
   findById,
   findAll,
   update,
-  deleteById
+  deleteById,
+  findBySub,
+  findByLoginIdentifier
 }

@@ -38,6 +38,8 @@ const run = (script, args = []) => new Promise((resolve, reject) => {
   })
 })
 
+// Runs against the test compose stack's Mongo, published to the host only by
+// docker-compose.test.yaml (the app itself reaches it via the internal docker DNS name)
 const waitForApplication = async () => {
   const deadline = Date.now() + 30_000
   let lastError

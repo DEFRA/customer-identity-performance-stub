@@ -7,4 +7,4 @@ and this project adheres to https://semver.org/spec/v2.0.0.html.
 
 ## [Unreleased]
 ### Added
-- Initial release of the DEFRA Customer Identity Management (CIDM) stub.
+- Initial release of the Defra Customer Identity Management (CIDM) stub.

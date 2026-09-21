@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { ensureOidcIndexes } from '../../../src/oidc/ensure-indexes.js'
+import { ensureOidcIndexes, ensureAccountIndexes } from '../../../src/oidc/ensure-indexes.js'
 
 describe('ensureOidcIndexes', () => {
   it('creates indexes only for the collections used by the current oidc-setup', async () => {
@@ -37,6 +37,11 @@ describe('ensureOidcIndexes', () => {
     for (const { indexes } of calls) {
       assert.equal(
         indexes.some((index) => index.key.expiresAt === 1 && index.expireAfterSeconds === 0),
+        true
+      )
+      // Cosmos DB-only fallback TTL index, inert on real MongoDB - see ensure-indexes.js
+      assert.equal(
+        indexes.some((index) => index.key._ts === 1 && typeof index.expireAfterSeconds === 'number'),
         true
       )
     }
@@ -117,6 +122,31 @@ describe('ensureOidcIndexes', () => {
     await ensureOidcIndexes(fakeDb)
 
     assert.equal(lastIndexes.some((index) => index.key.expiresAt === 1), true)
+    assert.equal(lastIndexes.some((index) => index.key._ts === 1), true)
     assert.equal(lastIndexes.some((index) => 'expireAfterSeconds' in index), false)
+  })
+
+  it('retries without collation when Cosmos DB Emulator rejects the option on the email index', async () => {
+    let lastIndexes
+    const accountsCollection = {
+      async createIndexes (indexes) {
+        lastIndexes = indexes
+        if (indexes.some((index) => 'collation' in index)) {
+          const error = new Error('collation')
+          error.code = 197
+          throw error
+        }
+      }
+    }
+    const fakeDb = {
+      collection (name) {
+        return name === 'accounts' ? accountsCollection : { async createIndexes () {} }
+      }
+    }
+
+    await ensureAccountIndexes(fakeDb)
+
+    assert.equal(lastIndexes.some((index) => index.key.email === 1), true)
+    assert.equal(lastIndexes.some((index) => 'collation' in index), false)
   })
 })
