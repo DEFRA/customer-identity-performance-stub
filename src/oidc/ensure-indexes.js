@@ -5,6 +5,7 @@
 import { getDb } from '../db/index.js'
 import { caseInsensitiveCollation } from '../repositories/account-repository.js'
 import config from '../config/index.js'
+import logger from '../logging/logger.js'
 
 const grantable = new Set([
   'AccessToken',
@@ -76,7 +77,10 @@ const stripUnsupportedOption = (error, indexes) => {
 async function createIndexesReplacingConflicts (collection, indexes, attempt = 0) {
   try {
     await collection.createIndexes(indexes)
+    logger.info(`mongo indexes created successfully for collection ${collection.collectionName}`)
   } catch (error) {
+    logger.warn(`mongo indexes creation error for collection ${collection.collectionName}: ${error} - code will retry with best effort`)
+
     if (isTransientServiceUnavailable(error) && attempt < maxTransientRetries) {
       await delay(Math.min(500 * (attempt + 1), maxRetryDelayMs))
       return createIndexesReplacingConflicts(collection, indexes, attempt + 1)
@@ -98,6 +102,7 @@ async function createIndexesReplacingConflicts (collection, indexes, attempt = 0
     }
 
     await collection.createIndexes(indexes)
+    logger.info(`mongo indexes created successfully after resolving conflicts for collection ${collection.collectionName}`)
   }
 }
 

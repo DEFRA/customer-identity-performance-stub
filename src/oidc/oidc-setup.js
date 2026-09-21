@@ -52,7 +52,13 @@ export const providerConfiguration = {
   },
   // B2C issues a new refresh token on every redemption - match that instead of oidc-provider's
   // default heuristic (which only rotates confidential-client tokens once 70% of ttl has passed)
-  rotateRefreshToken: () => true,
+  rotateRefreshToken: (ctx) => {
+    const totalLifetime = ctx.oidc.entities.RefreshToken.totalLifetime()
+    const absoluteMax = config.oidc.ttl.refreshTokenSeconds
+
+    // Stop rotation if we have reached or exceeded the absolute cap
+    return totalLifetime < absoluteMax
+  },
   scopes: ['openid', 'offline_access'],
   // Policy identifier and service/relationship selection preserved into the interaction
   // session for the authorize flow. This runs after redirect_uri/client_id are already
