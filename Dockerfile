@@ -1,6 +1,15 @@
 ARG PARENT_VERSION=3.1.4-node24.19.0
 ARG PORT=3000
 
+ARG INCLUDE_DEV_DATA=false
+
+FROM scratch AS conditional-data-true
+COPY ./data/accounts.development.json /tmp/data/accounts.development.json
+
+FROM scratch AS conditional-data-false
+
+FROM conditional-data-${INCLUDE_DEV_DATA} AS final-data
+
 FROM defradigital/node-development:${PARENT_VERSION} AS development
 
 ARG PARENT_VERSION
@@ -18,6 +27,8 @@ RUN npm install --ignore-scripts
 
 COPY --chown=node:node src/ ./src/
 COPY --chown=node:node public/ ./public/
+
+COPY --from=final-data --chown=node:node /tmp/data/ ./data/
 
 RUN npm run build
 
@@ -50,6 +61,7 @@ COPY --from=production-build --chown=root:root /home/node/package*.json ./
 COPY --from=production-build --chown=root:root /home/node/.npmrc ./
 COPY --from=production-build --chown=root:root /home/node/src/ ./src/
 COPY --from=production-build --chown=root:root /home/node/public/ ./public/
+COPY --from=production-build --chown=root:root /home/node/data/ ./data/
 
 RUN npm ci --ignore-scripts --omit=dev && chmod -R a-w /home/node
 
