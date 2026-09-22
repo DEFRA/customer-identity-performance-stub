@@ -52,9 +52,15 @@ const stripUnsupportedOption = (error, indexes) => {
     return indexes.map(({ unique, ...index }) => index)
   }
 
-  // "The 'expireAfterSeconds' option is currently not supported." (BadValue)
+  // Catch both Cosmos DB TTL variations (BadValue / Code 2)
   if (error.code === 2 && indexes.some((index) => 'expireAfterSeconds' in index)) {
-    return indexes.map(({ expireAfterSeconds, ...index }) => index)
+    const errMsg = error.errorResponse?.errmsg ?? '';
+    if (
+      /expireAfterSeconds/.test(errMsg) || 
+      /TTL index is already set up/.test(errMsg)
+    ) {
+      return indexes.map(({ expireAfterSeconds, ...index }) => index);
+    }
   }
 
   // "collation" (InvalidIndexSpecificationOption) - Cosmos DB Emulator doesn't support custom
@@ -81,28 +87,40 @@ async function createIndexesReplacingConflicts (collection, indexes, attempt = 0
   } catch (error) {
     logger.warn(`mongo indexes creation error for collection ${collection.collectionName}: ${error} - code will retry with best effort`)
 
+    // Handle transient service unavailabilities
     if (isTransientServiceUnavailable(error) && attempt < maxTransientRetries) {
       await delay(Math.min(500 * (attempt + 1), maxRetryDelayMs))
       return createIndexesReplacingConflicts(collection, indexes, attempt + 1)
     }
 
+    // Handle unsupported engine options 
     const strippedIndexes = stripUnsupportedOption(error, indexes)
     if (strippedIndexes) {
       return createIndexesReplacingConflicts(collection, strippedIndexes, attempt)
     }
 
+    // If it's not a conflict code we know how to fix, bubble it up
     if (!indexConflictCodes.has(error.code)) throw error
 
+    // Resolve index conflicts by dropping the conflicting index
     const existing = await collection.indexes()
     for (const { key } of indexes) {
       const name = autoIndexName(key)
       const conflicting = existing.find((index) =>
         JSON.stringify(index.key) === JSON.stringify(key) || index.name === name)
-      if (conflicting) await collection.dropIndex(conflicting.name)
+      if (conflicting) {
+        logger.info(`Dropping conflicting index ${conflicting.name} from collection ${collection.collectionName}`)
+        await collection.dropIndex(conflicting.name)
+      }
     }
 
-    await collection.createIndexes(indexes)
-    logger.info(`mongo indexes created successfully after resolving conflicts for collection ${collection.collectionName}`)
+    // Short delay and recurse back to the try/catch block safely
+    if (attempt < maxTransientRetries) {
+      await delay(Math.min(500 * (attempt + 1), maxRetryDelayMs))
+      return createIndexesReplacingConflicts(collection, indexes, attempt + 1)
+    }
+
+    logger.error(`Index creation completely failed for collection ${collection.collectionName} after exhausting retries. Error: ${error}`)
   }
 }
 

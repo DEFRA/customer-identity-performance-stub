@@ -102,28 +102,45 @@ describe('ensureOidcIndexes', () => {
     assert.equal(lastIndexes.some((index) => index.unique), false)
   })
 
-  it('retries without expireAfterSeconds when Cosmos DB rejects the TTL option', async () => {
-    let lastIndexes
-    const fakeDb = {
-      collection () {
-        return {
-          async createIndexes (indexes) {
-            lastIndexes = indexes
-            if (indexes.some((index) => 'expireAfterSeconds' in index)) {
-              const error = new Error("The 'expireAfterSeconds' option is currently not supported.")
-              error.code = 2
-              throw error
+  it('retries without expireAfterSeconds when Cosmos DB rejects the TTL option (handles old and new error strings)', async () => {
+    const errorMessagesToTest = [
+      "The 'expireAfterSeconds' option is currently not supported.",
+      "TTL index is already set up with different value."
+    ]
+
+    for (const actualCosmosErrMsg of errorMessagesToTest) {
+      let lastIndexes = null
+
+      const fakeDb = {
+        collection(name) {
+          return {
+            collectionName: name || 'Session',
+            async indexes() {
+              return []
+            },
+            async createIndexes(indexes) {
+              lastIndexes = indexes
+              if (indexes.some((index) => 'expireAfterSeconds' in index)) {
+                const error = new Error("MongoServerError")
+                error.code = 2
+                error.errorResponse = {
+                  ok: 0,
+                  code: 2,
+                  errmsg: actualCosmosErrMsg
+                }
+                throw error
+              }
             }
           }
         }
       }
+
+      await ensureOidcIndexes(fakeDb)
+
+      assert.equal(lastIndexes.some((index) => index.key.expiresAt === 1), true)
+      assert.equal(lastIndexes.some((index) => index.key._ts === 1), true)
+      assert.equal(lastIndexes.some((index) => 'expireAfterSeconds' in index), false)
     }
-
-    await ensureOidcIndexes(fakeDb)
-
-    assert.equal(lastIndexes.some((index) => index.key.expiresAt === 1), true)
-    assert.equal(lastIndexes.some((index) => index.key._ts === 1), true)
-    assert.equal(lastIndexes.some((index) => 'expireAfterSeconds' in index), false)
   })
 
   it('retries without collation when Cosmos DB Emulator rejects the option on the email index', async () => {

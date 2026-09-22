@@ -22,7 +22,11 @@ await ensureOidcIndexes()
 await ensureAccountIndexes()
 
 if (config.seedFilePath) {
-  await seedAccountsFromFile(config.seedFilePath)
+  try {
+    await seedAccountsFromFile(config.seedFilePath)
+  } catch (error) {
+    logger.error(`Failed to seed accounts from file "${config.seedFilePath}". App will continue to boot. Error: ${error}`)
+  }
 }
 
 // Register all plugins (views, static files, logging, etc.)
