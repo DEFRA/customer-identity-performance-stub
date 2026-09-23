@@ -126,6 +126,10 @@ export const providerConfiguration = {
 
 const provider = new oidc.Provider(config.oidc.issuer, providerConfiguration)
 
+// Enable proxy support for the OIDC provider
+// allowing it to correctly handle requests behind a reverse proxy.
+provider.proxy = true
+
 // Independently tunable via OIDC_LOG_LEVEL, since oidc-provider's event volume can be noisy
 const oidcLogger = logger.child({ component: 'oidc-provider' }, { level: config.log.oidcLevel })
 registerEventLogging(provider, oidcLogger)
