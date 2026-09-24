@@ -37,7 +37,7 @@ function cookieHeader (jar) {
 }
 
 async function fetchMetadata () {
-  const response = await fetch(`${baseUrl}/${policy}/oidc/.well-known/openid-configuration`)
+  const response = await fetch(`${baseUrl}/${policy}/.well-known/openid-configuration`)
   assert.equal(response.status, 200)
   return response.json()
 }
@@ -206,9 +206,12 @@ test('narrows relationships and roles to the requested relationshipId', async ()
 })
 
 test('completes the authorization code + refresh token flow using the query-parameter policy form', async () => {
-  const discoveryResponse = await fetch(`${baseUrl}/oidc/.well-known/openid-configuration?p=${policy}`)
-  assert.equal(discoveryResponse.status, 200)
-  const metadata = await discoveryResponse.json()
+  // discovery itself is no longer served in query-parameter form by default (OIDC_METADATA_PATH
+  // requires {policyId}); the auth/token endpoints still support ?p=, so build them directly
+  const metadata = {
+    authorization_endpoint: `${baseUrl}/oidc/auth?p=${policy}`,
+    token_endpoint: `${baseUrl}/oidc/token?p=${policy}`
+  }
 
   const { code, codeVerifier } = await performLogin(metadata)
   const tokenResponse = await exchangeCodeForTokens(metadata.token_endpoint, code, codeVerifier)

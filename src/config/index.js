@@ -38,7 +38,10 @@ const oidc = {
     accessTokenSeconds: parseInt(process.env.ACCESS_TOKEN_TTL_SECONDS || '1200', 10),
     refreshTokenSeconds: parseInt(process.env.REFRESH_TOKEN_TTL_SECONDS || '86400', 10),
     refreshTokenRollingSeconds: parseInt(process.env.REFRESH_TOKEN_ROLLING_TTL_SECONDS || '86400', 10)
-  }
+  },
+  // Discovery document path; supports a {policyId} placeholder (path-segment form). A value
+  // without the placeholder serves that literal path and takes the policy via ?p= instead.
+  metadataPath: process.env.OIDC_METADATA_PATH || '/{policyId}/.well-known/openid-configuration'
 }
 
 const db = {

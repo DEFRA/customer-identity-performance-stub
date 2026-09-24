@@ -59,5 +59,6 @@ process.on('SIGTERM', async () => {
 // Start server
 await server.start()
 logger.info(`Server running at ${server.info.uri}`)
+logger.info(`OIDC discovery document available at ${config.oidc.issuer}${config.oidc.metadataPath}`)
 
 export default server

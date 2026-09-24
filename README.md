@@ -313,6 +313,7 @@ Environment variables are usually loaded from `.env` for local development.
 | `HOST` | No | `0.0.0.0` | HTTP host/interface to bind. |
 | `PUBLIC_URL` | No | `http://localhost:3000` | Public base URL used for issuer and endpoint metadata. Must match the URL consuming apps use. |
 | `OIDC_ISSUER` | No | same as `PUBLIC_URL` | Override for the OIDC issuer when it must differ from `PUBLIC_URL`. |
+| `OIDC_METADATA_PATH` | No | `/{policyId}/.well-known/openid-configuration` | Path the discovery document is served from. Include the literal `{policyId}` segment for the path-segment form, or omit it to serve one fixed path selectable via `?p=` instead. Endpoint URLs inside the document (`authorization_endpoint`, etc.) always keep their `/oidc/...` shape regardless of this setting. Hapi conventions can be used as documented [here](https://hapi.dev/tutorials/en_US/routing). For example, the following uses an hapi-style wildcard routing: `OIDC_METADATA_PATH='/idphub/b2c/{policyId}/{any*}'` |
 | `OIDC_CLIENTS` | Yes for OIDC flows | JSON array | Registered OIDC clients. If omitted, no clients are registered. |
 | `SIGNING_KEY` | No | generated at startup | Base64-encoded PKCS#8 PEM RSA private key. Use a stable value when token validators must survive stub restarts. |
 | `MONGO_URL` | Yes | `mongodb://mongoadmin:secret@db:27017/?authSource=admin` | MongoDB connection string. Use `db` inside Docker Compose and `localhost` when the app runs on the host. |
@@ -496,7 +497,7 @@ The stub exposes the following endpoints:
 
 | Endpoint | Path segment form | Query parameter form |
 |----------|-------------------|----------------------|
-| **OIDC Discovery** | `GET /{policyId}/oidc/.well-known/openid-configuration` | `GET /oidc/.well-known/openid-configuration?p={policyId}` |
+| **OIDC Discovery** | `GET /{policyId}/.well-known/openid-configuration` (default; configurable via `OIDC_METADATA_PATH`) | Available instead of the path-segment form only when `OIDC_METADATA_PATH` is set to a fixed path without `{policyId}`, e.g. `GET /.well-known/openid-configuration?p={policyId}` |
 | **JWKS** | `GET /{policyId}/oidc/jwks` | `GET /oidc/jwks?p={policyId}` |
 | **Authorization** | `GET /{policyId}/oidc/auth` | `GET /oidc/auth?p={policyId}` |
 | **Token** | `POST /{policyId}/oidc/token` | `POST /oidc/token?p={policyId}` |

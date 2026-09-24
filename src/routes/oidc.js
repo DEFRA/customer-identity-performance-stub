@@ -2,23 +2,35 @@
  * OIDC routes
  */
 
-import oidcHandler from '../handlers/oidc.js'
+import config from '../config/index.js'
+import oidcHandler, { metadataHandler } from '../handlers/oidc.js'
 
-const config = { payload: { output: 'stream', parse: false } }
+const routeConfig = { payload: { output: 'stream', parse: false } }
 
-export default [
+const routes = [
   // Query-parameter policy form: /oidc/*?p={policyId}
   {
     method: '*',
     path: '/oidc/{any*}',
-    config,
+    config: routeConfig,
     handler: oidcHandler
   },
   // Path-segment policy form: /{policyId}/oidc/*
   {
     method: '*',
     path: '/{policyId}/oidc/{any*}',
-    config,
+    config: routeConfig,
     handler: oidcHandler
   }
 ]
+
+if (config.oidc.metadataPath) {
+  routes.push({
+    method: '*',
+    path: config.oidc.metadataPath,
+    config: routeConfig,
+    handler: metadataHandler
+  })
+}
+
+export default routes

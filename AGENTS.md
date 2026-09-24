@@ -56,3 +56,9 @@ Guidance for AI coding agents working on the Defra CIDM Stub.
 
 ## Security
 - Call out if any file that might contain sensitive data has been git staged, like the `.env` file for example.
+
+## Misc
+
+- Never change CHANGELOG.md
+- Never change LICENSE
+- Always ask before changing any file that is gitignored
