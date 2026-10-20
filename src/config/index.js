@@ -7,6 +7,24 @@ const port = process.env.PORT || 3000
 const host = process.env.HOST || '0.0.0.0'
 const publicUrl = process.env.PUBLIC_URL || `http://localhost:${port}`
 
+const parsePositiveIntegerSetting = (name, value, defaultValue) => {
+  if (value === undefined || value.trim() === '') {
+    return defaultValue
+  }
+
+  const normalizedValue = value.trim()
+  if (!/^\d+$/.test(normalizedValue)) {
+    throw new Error(`${name} must be a positive integer`)
+  }
+
+  const parsedValue = Number(normalizedValue)
+  if (!Number.isSafeInteger(parsedValue) || parsedValue < 1) {
+    throw new Error(`${name} must be a positive integer`)
+  }
+
+  return parsedValue
+}
+
 /**
  * Parse OIDC clients from JSON environment variable.
  * Format: OIDC_CLIENTS='[{"client_id":"foo","client_secret":"bar","redirect_uris":["http://localhost:3001/cb"]}]'
@@ -50,6 +68,11 @@ const db = {
   timeout: parseInt(process.env.MONGO_TIMEOUT || '5000', 10)
 }
 
+const accountCache = {
+  maxEntries: parsePositiveIntegerSetting('ACCOUNT_CACHE_MAX_ENTRIES', process.env.ACCOUNT_CACHE_MAX_ENTRIES, 1000),
+  ttlMs: parsePositiveIntegerSetting('ACCOUNT_CACHE_TTL_MS', process.env.ACCOUNT_CACHE_TTL_MS, 30_000)
+}
+
 // Path to a JSON seed file of account documents, upserted (by sub, non-destructively) at
 // startup. Unset means the feature is off.
 const seedFilePath = process.env.SEED_FILE_PATH
@@ -66,6 +89,7 @@ export default {
   isProduction,
   oidc,
   db,
+  accountCache,
   seedFilePath,
   log
 }

@@ -4,6 +4,8 @@
  */
 
 import { ObjectId } from 'mongodb'
+import { createCache } from '../cache/cache.js'
+import config from '../config/index.js'
 import { getDb } from '../db/client.js'
 
 const COLLECTION_NAME = 'accounts'
@@ -13,107 +15,230 @@ const COLLECTION_NAME = 'accounts'
 export const caseInsensitiveCollation = { locale: 'en', strength: 2 }
 
 /**
- * Get or create the accounts collection
- * @returns {Promise<Collection>}
+ * Create an account repository
+ * @param {object} [options]
+ * @param {Function} [options.getDb] - Database getter, injectable for testing
+ * @param {object} [options.cache] - Cache instance, injectable for testing
+ * @returns {object}
  */
-async function getCollection () {
-  const db = await getDb()
-  return db.collection(COLLECTION_NAME)
+export function createAccountRepository ({
+  getDb: getDatabase = getDb,
+  cache = createCache({ maxEntries: config.accountCache.maxEntries })
+} = {}) {
+  /**
+   * Get or create the accounts collection
+   * @returns {Promise<Collection>}
+   */
+  async function getCollection () {
+    const db = await getDatabase()
+    return db.collection(COLLECTION_NAME)
+  }
+
+  function accountCacheKey (id) {
+    return `account:${id}`
+  }
+
+  function lookupCacheKey (type, value) {
+    return `lookup:${type}:${value}`
+  }
+
+  function cacheAccount (account, lookupKey) {
+    if (!(account?._id instanceof ObjectId)) {
+      return
+    }
+
+    const id = account._id.toHexString()
+    const options = { ttlMs: config.accountCache.ttlMs }
+    cache.set(accountCacheKey(id), account, options)
+
+    if (typeof account.sub === 'string') {
+      cache.set(lookupCacheKey('sub', account.sub), id, options)
+    }
+    if (lookupKey) {
+      cache.set(lookupKey, id, options)
+    }
+  }
+
+  function invalidateAccount (id) {
+    const objectId = typeof id === 'string' ? new ObjectId(id) : id
+    if (objectId instanceof ObjectId) {
+      cache.delete(accountCacheKey(objectId.toHexString()))
+    }
+  }
+
+  function invalidateAccountLookups (account) {
+    if (typeof account?.sub === 'string') {
+      cache.delete(lookupCacheKey('sub', account.sub))
+    }
+    if (typeof account?.email === 'string') {
+      cache.delete(lookupCacheKey('login', account.email))
+    }
+    if (typeof account?.crn === 'string') {
+      cache.delete(lookupCacheKey('login', account.crn))
+    }
+  }
+
+  async function findCachedAccountByLookup (key, find) {
+    const cachedId = cache.get(key)
+    if (cachedId !== undefined) {
+      const cachedAccount = cache.get(accountCacheKey(cachedId))
+      if (cachedAccount !== undefined) {
+        return cachedAccount
+      }
+
+      cache.delete(key)
+    }
+
+    const account = await find()
+    if (account) {
+      cacheAccount(account, key)
+    }
+    return account
+  }
+
+  /**
+   * Create a new account
+   * @param {object} account - Account data
+   * @returns {Promise<object>} Created account with _id
+   */
+  async function create (account) {
+    const collection = await getCollection()
+    const result = await collection.insertOne({
+      ...account,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    })
+    invalidateAccountLookups(account)
+    return { _id: result.insertedId, ...account }
+  }
+
+  /**
+   * Find account by ID
+   * @param {string|ObjectId} id - Account ID
+   * @returns {Promise<object|null>} Account or null if not found
+   */
+  async function findById (id) {
+    const objectId = typeof id === 'string' ? new ObjectId(id) : id
+
+    if (!(objectId instanceof ObjectId)) {
+      const collection = await getCollection()
+      return collection.findOne({ _id: objectId })
+    }
+
+    const key = accountCacheKey(objectId.toHexString())
+    const cachedAccount = cache.get(key)
+    if (cachedAccount !== undefined) {
+      return cachedAccount
+    }
+
+    const collection = await getCollection()
+    const account = await collection.findOne({ _id: objectId })
+    if (account) {
+      cacheAccount(account)
+    }
+    return account
+  }
+
+  /**
+   * Find all accounts
+   * @returns {Promise<array>} Array of accounts
+   */
+  async function findAll () {
+    const collection = await getCollection()
+    return collection.find({}).toArray()
+  }
+
+  /**
+   * Update an account
+   * @param {string|ObjectId} id - Account ID
+   * @param {object} updates - Fields to update
+   * @returns {Promise<object>} Updated account
+   */
+  async function update (id, updates) {
+    const collection = await getCollection()
+    const objectId = typeof id === 'string' ? new ObjectId(id) : id
+    const result = await collection.findOneAndUpdate(
+      { _id: objectId },
+      { $set: { ...updates, updatedAt: new Date() } },
+      { returnDocument: 'after' }
+    )
+    invalidateAccount(objectId)
+    invalidateAccountLookups(result.value)
+    return result.value
+  }
+
+  /**
+   * Delete an account
+   * @param {string|ObjectId} id - Account ID
+   * @returns {Promise<boolean>} True if the account was deleted
+   */
+  async function deleteById (id) {
+    const collection = await getCollection()
+    const objectId = typeof id === 'string' ? new ObjectId(id) : id
+    const result = await collection.deleteOne({ _id: objectId })
+    if (result.deletedCount > 0) {
+      invalidateAccount(objectId)
+    }
+    return result.deletedCount > 0
+  }
+
+  /**
+   * Find an account by its token subject identifier
+   * @param {string} sub - Account sub claim
+   * @returns {Promise<object|null>} Account or null if not found
+   */
+  async function findBySub (sub) {
+    if (typeof sub !== 'string') {
+      const collection = await getCollection()
+      return collection.findOne({ sub })
+    }
+
+    return findCachedAccountByLookup(lookupCacheKey('sub', sub), async () => {
+      const collection = await getCollection()
+      return collection.findOne({ sub })
+    })
+  }
+
+  /**
+   * Find an account by the identifier entered at login (email, case-insensitive, or CRN)
+   * @param {string} identifier - Submitted email address or CRN
+   * @returns {Promise<object|null>} Account or null if not found
+   */
+  async function findByLoginIdentifier (identifier) {
+    const find = async () => {
+      const collection = await getCollection()
+      return collection.findOne(
+        { $or: [{ email: identifier }, { crn: identifier }] },
+        { collation: caseInsensitiveCollation }
+      )
+    }
+
+    if (typeof identifier !== 'string') {
+      return find()
+    }
+
+    return findCachedAccountByLookup(lookupCacheKey('login', identifier), find)
+  }
+
+  return {
+    create,
+    findById,
+    findAll,
+    update,
+    deleteById,
+    findBySub,
+    findByLoginIdentifier
+  }
 }
 
-/**
- * Create a new account
- * @param {object} account - Account data
- * @returns {Promise<object>} Created account with _id
- */
-export async function create (account) {
-  const collection = await getCollection()
-  const result = await collection.insertOne({
-    ...account,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  })
-  return { _id: result.insertedId, ...account }
-}
+const accountRepository = createAccountRepository()
 
-/**
- * Find account by ID
- * @param {string|ObjectId} id - Account ID
- * @returns {Promise<object|null>} Account or null if not found
- */
-export async function findById (id) {
-  const collection = await getCollection()
-  const objectId = typeof id === 'string' ? new ObjectId(id) : id
-  return collection.findOne({ _id: objectId })
-}
+export const create = accountRepository.create
+export const findById = accountRepository.findById
+export const findAll = accountRepository.findAll
+export const update = accountRepository.update
+export const deleteById = accountRepository.deleteById
+export const findBySub = accountRepository.findBySub
+export const findByLoginIdentifier = accountRepository.findByLoginIdentifier
 
-/**
- * Find all accounts
- * @returns {Promise<array>} Array of accounts
- */
-export async function findAll () {
-  const collection = await getCollection()
-  return collection.find({}).toArray()
-}
-
-/**
- * Update an account
- * @param {string|ObjectId} id - Account ID
- * @param {object} updates - Fields to update
- * @returns {Promise<object>} Updated account
- */
-export async function update (id, updates) {
-  const collection = await getCollection()
-  const objectId = typeof id === 'string' ? new ObjectId(id) : id
-  const result = await collection.findOneAndUpdate(
-    { _id: objectId },
-    { $set: { ...updates, updatedAt: new Date() } },
-    { returnDocument: 'after' }
-  )
-  return result.value
-}
-
-/**
- * Delete an account
- * @param {string|ObjectId} id - Account ID
- * @returns {Promise<boolean>} True if the account was deleted
- */
-export async function deleteById (id) {
-  const collection = await getCollection()
-  const objectId = typeof id === 'string' ? new ObjectId(id) : id
-  const result = await collection.deleteOne({ _id: objectId })
-  return result.deletedCount > 0
-}
-
-/**
- * Find an account by its token subject identifier
- * @param {string} sub - Account sub claim
- * @returns {Promise<object|null>} Account or null if not found
- */
-export async function findBySub (sub) {
-  const collection = await getCollection()
-  return collection.findOne({ sub })
-}
-
-/**
- * Find an account by the identifier entered at login (email, case-insensitive, or CRN)
- * @param {string} identifier - Submitted email address or CRN
- * @returns {Promise<object|null>} Account or null if not found
- */
-export async function findByLoginIdentifier (identifier) {
-  const collection = await getCollection()
-  return collection.findOne(
-    { $or: [{ email: identifier }, { crn: identifier }] },
-    { collation: caseInsensitiveCollation }
-  )
-}
-
-export default {
-  create,
-  findById,
-  findAll,
-  update,
-  deleteById,
-  findBySub,
-  findByLoginIdentifier
-}
+export default accountRepository

@@ -159,7 +159,7 @@ The client values must match a client registered through `OIDC_CLIENTS`, and the
 - **Policy Routing** — supports policy-scoped discovery and endpoint URLs ✅
 - **Test Account Management** — JSON seed-file based account loading ✅
 - **MongoDB Persistence** — OIDC grants, sessions, clients, and test accounts ✅
-- **In-Memory Cache** — efficient lookup for high-throughput testing ❌
+- **In-Memory Account Lookup Cache** — bounded, per-process cache for successful account lookups ✅
 - **Admin API** — creating/managing test identities over HTTP ❌
 
 ✅: implemented  
@@ -191,6 +191,7 @@ See the official [MongoDB Node.js driver compatibility table](https://www.mongod
 ```text
 data/                Test account seed data (JSON documents loaded at startup via SEED_FILE_PATH)
 src/
+  cache/             Reusable in-memory cache utility
   config/            Environment and configuration
   db/                MongoDB connection and lifecycle
   handlers/          Route handlers and business logic
@@ -319,6 +320,8 @@ Environment variables are usually loaded from `.env` for local development.
 | `MONGO_URL` | Yes | `mongodb://mongoadmin:secret@db:27017/?authSource=admin` | MongoDB connection string. Use `db` inside Docker Compose and `localhost` when the app runs on the host. |
 | `MONGO_DB_NAME` | No | `cidm-stub` | MongoDB database name. |
 | `MONGO_TIMEOUT` | No | `5000` | MongoDB connection timeout in milliseconds. |
+| `ACCOUNT_CACHE_MAX_ENTRIES` | No | `1000` | Maximum number of account and lookup entries held in each application process. Must be a positive integer. |
+| `ACCOUNT_CACHE_TTL_MS` | No | `30000` | Account cache lifetime in milliseconds. Must be a positive integer. |
 | `SEED_FILE_PATH` | No | set by Docker Compose | Path to a JSON seed file of accounts, loaded at startup. |
 | `LOG_LEVEL` | No | `info` in production, `debug` otherwise | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) for the whole app. |
 | `OIDC_LOG_LEVEL` | No | same as `LOG_LEVEL` | Overrides the log level for oidc-provider's own events only. |
@@ -371,6 +374,8 @@ MONGO_URL="mongodb://mongoadmin:secret@localhost:27017/?authSource=admin" npm ru
 ```
 
 Add `-- --wipe` to delete all existing accounts first for a completely fresh load, or pass a different file path as the first argument. Set `MONGO_URL` to match wherever the script runs from (`localhost` on the host, as above, or `db` if run inside the Docker network).
+
+Successful account lookups by ID, subject, or login identifier are cached in each application process. Set `ACCOUNT_CACHE_TTL_MS` to control how long account and lookup entries remain valid (default `30000` ms), and `ACCOUNT_CACHE_MAX_ENTRIES` to control the per-process capacity (default `1000`). Both settings must be positive integers. The cache evicts the least-recently-used entry when full. Lookups by login identifier and subject resolve to the same cached account record. Repository writes invalidate the affected account record and relevant lookup keys without evicting unrelated accounts; direct database changes, including `npm run upload:accounts`, may take up to the configured TTL to appear. Restart the stub to make external account changes visible immediately. `findAll` is not cached.
 
 ## Running Outside Docker Compose
 

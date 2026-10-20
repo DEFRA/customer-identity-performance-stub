@@ -234,7 +234,7 @@ async function refreshTokens (tokenEndpoint, refreshToken) {
  * Fetch OIDC discovery metadata
  */
 async function fetchOidcMetadata () {
-  const metadataUrl = new URL(`/${CONFIG.policy}/oidc/.well-known/openid-configuration`, CONFIG.oidcServer).toString()
+  const metadataUrl = new URL(`/${CONFIG.policy}/.well-known/openid-configuration`, CONFIG.oidcServer).toString()
   const response = await fetch(metadataUrl)
   if (!response.ok) {
     throw new Error(`Failed to fetch OIDC metadata: ${response.status}`)
