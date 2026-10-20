@@ -73,6 +73,10 @@ const accountCache = {
   ttlMs: parsePositiveIntegerSetting('ACCOUNT_CACHE_TTL_MS', process.env.ACCOUNT_CACHE_TTL_MS, 30_000)
 }
 
+const authContextCache = {
+  maxEntries: parsePositiveIntegerSetting('AUTH_CONTEXT_CACHE_MAX_ENTRIES', process.env.AUTH_CONTEXT_CACHE_MAX_ENTRIES, 1000)
+}
+
 // Path to a JSON seed file of account documents, upserted (by sub, non-destructively) at
 // startup. Unset means the feature is off.
 const seedFilePath = process.env.SEED_FILE_PATH
@@ -90,6 +94,7 @@ export default {
   oidc,
   db,
   accountCache,
+  authContextCache,
   seedFilePath,
   log
 }

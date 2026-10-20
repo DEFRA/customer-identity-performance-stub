@@ -322,6 +322,7 @@ Environment variables are usually loaded from `.env` for local development.
 | `MONGO_TIMEOUT` | No | `5000` | MongoDB connection timeout in milliseconds. |
 | `ACCOUNT_CACHE_MAX_ENTRIES` | No | `1000` | Maximum number of account and lookup entries held in each application process. Must be a positive integer. |
 | `ACCOUNT_CACHE_TTL_MS` | No | `30000` | Account cache lifetime in milliseconds. Must be a positive integer. |
+| `AUTH_CONTEXT_CACHE_MAX_ENTRIES` | No | `1000` | Maximum number of sign-ins whose `serviceId`/`relationshipId` are cached in each application process. Must be a positive integer. See [Data Management](#data-management) for sizing guidance. |
 | `SEED_FILE_PATH` | No | set by Docker Compose | Path to a JSON seed file of accounts, loaded at startup. |
 | `LOG_LEVEL` | No | `info` in production, `debug` otherwise | Pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`) for the whole app. |
 | `OIDC_LOG_LEVEL` | No | same as `LOG_LEVEL` | Overrides the log level for oidc-provider's own events only. |
@@ -376,6 +377,10 @@ MONGO_URL="mongodb://mongoadmin:secret@localhost:27017/?authSource=admin" npm ru
 Add `-- --wipe` to delete all existing accounts first for a completely fresh load, or pass a different file path as the first argument. Set `MONGO_URL` to match wherever the script runs from (`localhost` on the host, as above, or `db` if run inside the Docker network).
 
 Successful account lookups by ID, subject, or login identifier are cached in each application process. Set `ACCOUNT_CACHE_TTL_MS` to control how long account and lookup entries remain valid (default `30000` ms), and `ACCOUNT_CACHE_MAX_ENTRIES` to control the per-process capacity (default `1000`). Both settings must be positive integers. The cache evicts the least-recently-used entry when full. Lookups by login identifier and subject resolve to the same cached account record. Repository writes invalidate the affected account record and relevant lookup keys without evicting unrelated accounts; direct database changes, including `npm run upload:accounts`, may take up to the configured TTL to appear. Restart the stub to make external account changes visible immediately. `findAll` is not cached.
+
+Each sign-in also stores the `serviceId` and `relationshipId` from the authorization request, so they can be included in every token issued for that sign-in, including tokens obtained with a refresh token. These values are cached in each application process. Set `AUTH_CONTEXT_CACHE_MAX_ENTRIES` to control how many are held (default `1000`). Entries expire when the sign-in's refresh tokens can no longer be used (`REFRESH_TOKEN_TTL_SECONDS`, 24 hours by default). Successful repository writes invalidate the affected entry. Direct database changes are not broadcast between application instances.
+
+To size `AUTH_CONTEXT_CACHE_MAX_ENTRIES`, estimate how many sign-ins will still be refreshing tokens at the same time on one instance. For example, if a performance test signs in 5,000 virtual users once and they refresh their tokens throughout the test, use at least `5000`. If traffic is spread evenly across two instances, each instance needs about `2500`. A setting that is too small is still correct, but the least recently used entries are evicted, so their next token refresh reads them from MongoDB again.
 
 ## Running Outside Docker Compose
 
