@@ -160,7 +160,7 @@ The client values must match a client registered through `OIDC_CLIENTS`, and the
 - **Test Account Management** — JSON seed-file based account loading ✅
 - **MongoDB Persistence** — OIDC grants, sessions, clients, and test accounts ✅
 - **In-Memory Account Lookup Cache** — bounded, per-process cache for successful account lookups ✅
-- **Admin API** — creating/managing test identities over HTTP ❌
+- **Admin API** — authenticated HTTP account management for test identities ✅
 
 ✅: implemented  
 ❌: TODO
@@ -205,6 +205,7 @@ src/
   server.js          Hapi server setup
 public/assets/       Built CSS and GOV.UK Frontend assets
 scripts/             Development and testing utility scripts
+requests/            Manual HTTP requests for the VS Code REST Client extension
 test/
   unit/              Unit tests
   integration/       Integration tests
@@ -316,6 +317,7 @@ Environment variables are usually loaded from `.env` for local development.
 | `OIDC_ISSUER` | No | same as `PUBLIC_URL` | Override for the OIDC issuer when it must differ from `PUBLIC_URL`. |
 | `OIDC_METADATA_PATH` | No | `/{policyId}/.well-known/openid-configuration` | Path the discovery document is served from. Include the literal `{policyId}` segment for the path-segment form, or omit it to serve one fixed path selectable via `?p=` instead. Endpoint URLs inside the document (`authorization_endpoint`, etc.) always keep their `/oidc/...` shape regardless of this setting. Hapi conventions can be used as documented [here](https://hapi.dev/tutorials/en_US/routing). For example, the following uses an hapi-style wildcard routing: `OIDC_METADATA_PATH='/idphub/b2c/{policyId}/{any*}'` |
 | `OIDC_CLIENTS` | Yes for OIDC flows | JSON array | Registered OIDC clients. If omitted, no clients are registered. |
+| `ADMIN_API_KEY` | Yes | — | Shared secret required to call the account-management Admin API using the `api-key` header. The application fails to start if it is unset or blank. |
 | `SIGNING_KEY` | No | generated at startup | Base64-encoded PKCS#8 PEM RSA private key. Use a stable value when token validators must survive stub restarts. |
 | `MONGO_URL` | Yes | `mongodb://mongoadmin:secret@db:27017/?authSource=admin` | MongoDB connection string. Use `db` inside Docker Compose and `localhost` when the app runs on the host. |
 | `MONGO_DB_NAME` | No | `cidm-stub` | MongoDB database name. |
@@ -348,7 +350,7 @@ When using the Cosmos DB Emulator Compose override, its `MONGO_URL` takes preced
 
 ### Logging
 
-The stub uses [pino](https://github.com/pinojs/pino) via [hapi-pino](https://github.com/hapijs/hapi-pino) for structured request logging, plus a shared `logger` (in `src/logging/logger.js`) for startup/lifecycle messages and oidc-provider's own events (`src/oidc/event-logging.js`). Output is pretty-printed outside production and newline-delimited JSON in production. Sensitive fields (`Authorization`/`Cookie` headers, client secrets) are redacted.
+The stub uses [pino](https://github.com/pinojs/pino) via [hapi-pino](https://github.com/hapijs/hapi-pino) for structured request logging, plus a shared `logger` (in `src/logging/logger.js`) for startup/lifecycle messages and oidc-provider's own events (`src/oidc/event-logging.js`). Output is pretty-printed outside production and newline-delimited JSON in production. Sensitive fields (`Authorization`/`Cookie`/`api-key` headers, client secrets) are redacted.
 
 To forward logs to Azure Application Insights, add an `applicationinsights`-backed target to `buildTargets()` in `src/logging/logger.js`, gated behind an env var such as `APPLICATIONINSIGHTS_CONNECTION_STRING` - the rest of the logging setup requires no changes. Note this only ships pino log lines as App Insights traces; request/dependency/exception telemetry needs separate OpenTelemetry instrumentation (e.g. `@azure/monitor-opentelemetry`).
 
@@ -356,7 +358,7 @@ To forward logs to Azure Application Insights, add an `applicationinsights`-back
 
 ### Account seed data
 
-Setting `SEED_FILE_PATH` to the path of a JSON file containing an array of account documents makes the stub insert any accounts from that file which don't already exist in the `accounts` collection (matched by `sub`) every time it starts up. Accounts already present are left completely untouched - this is additive seeding, not a reset. To clear account data, drop the `accounts` collection directly.
+Setting `SEED_FILE_PATH` to the path of a JSON file containing an array of account documents makes the stub insert any accounts from that file which don't already exist in the `accounts` collection (matched by `sub`) every time it starts up. Accounts already present are left completely untouched - this is additive seeding, not a reset. Accounts persist across restarts. Manage them at runtime through the Admin API, or clear them directly in MongoDB.
 
 The Docker Compose setup enables this by default: `docker-compose.yaml` mounts [`data/accounts.development.json`](data/accounts.development.json) into the container and sets `SEED_FILE_PATH` to it, so a fresh `npm run compose:up` always has a baseline set of test accounts (Standard, ALT, and SFI shapes) without any manual seeding step.
 
@@ -367,6 +369,10 @@ npm run compose:reset
 ```
 
 The default MongoDB stack stores data in the `cidm-stub-db-data` named volume, so `npm run compose:down` does not remove account data. Remove that volume separately if you need a completely clean MongoDB database.
+
+The Admin API can create, replace, update, list, retrieve, and delete accounts without restarting the stub. It is account-only; OIDC clients remain configured at startup through `OIDC_CLIENTS`. Calls require `api-key` with the configured `ADMIN_API_KEY`. Use `DELETE /admin/accounts/{sub}` to remove an account, or clear the collection directly in MongoDB.
+
+Ready-to-send requests for the Admin API are in [`requests/admin.http`](requests/admin.http). Open the file with the VS Code [REST Client extension](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) and send a request using its **Send Request** action. The requests read their values (base URL, Admin API key, and sample account subject and email) from `requests/.env`, which is gitignored. Create it with `cp requests/.env.example requests/.env`, then change values locally as needed; its `ADMIN_API_KEY` must match the running stub's.
 
 To push changes into an already-running stack without recreating it, use [`scripts/upload-accounts.js`](scripts/upload-accounts.js) instead - unlike the startup seed mechanism, it upserts every account in the file (overwriting existing ones matched by `sub`, not just inserting new ones):
 
@@ -418,13 +424,12 @@ Use `npm run test:integration` to test an already-running application. Set `TEST
 
 Some integration tests (`test/integration/auth-code-flow.test.js`) drive the full OIDC authorization
 code, refresh token, and logout flows headlessly and need a registered OIDC client.
-`npm run test:integration:local` provisions a dedicated, non-secret test client automatically
-(via `test/run-integration.js`, which sets default `CLIENT_ID`/`CLIENT_SECRET`/`OIDC_CLIENTS` values
-before starting `docker-compose.test.yaml`) — no `.env` changes are required. `npm run compose:test:up`
-only forwards the current `OIDC_CLIENTS` environment variable into the stack; it does not set that
-variable itself, so running it directly without first exporting matching `CLIENT_ID`/`CLIENT_SECRET`/
-`OIDC_CLIENTS` values starts a stack without the client and the headless tests will fail. Prefer
-`npm run test:integration:local`, or export those variables yourself before `npm run compose:test:up`.
+`npm run test:integration:local` provisions a dedicated, non-secret OIDC client and Admin API key
+automatically (via `test/run-integration.js`) — no `.env` changes are required. `npm run compose:test:up`
+only forwards the current `OIDC_CLIENTS` and `ADMIN_API_KEY` environment variables into the stack;
+it does not set them itself. Running it directly without matching values may start a stack that
+cannot pass the headless tests. Prefer `npm run test:integration:local`, or export matching values
+before `npm run compose:test:up`.
 
 ### Scripts
 
@@ -514,12 +519,135 @@ The stub exposes the following endpoints:
 | **End Session** | `GET /{policyId}/oidc/session/end` | `GET /oidc/session/end?p={policyId}` |
 | **Liveness** | `GET /health/live` | — |
 | **Readiness** | `GET /health/ready` | — |
+| **List accounts** | `GET /admin/accounts` | — |
+| **Get account by sub** | `GET /admin/accounts/{sub}` | — |
+| **Get account by email** | - | `GET /admin/accounts?email={email}` |
+| **Create account** | `POST /admin/accounts` | — |
+| **Replace account** | `PUT /admin/accounts/{sub}` | — |
+| **Update account** | `PATCH /admin/accounts/{sub}` | — |
+| **Delete account** | `DELETE /admin/accounts/{sub}` | — |
 | **Clear account cache** | `DELETE /cache/accounts` | — |
 | **Clear auth-context cache** | `DELETE /cache/auth-context` | — |
 
 Valid policy IDs: `b2c_1a_signupsignin`, `b2c_1a_signupsigninalt`, `b2c_1a_signupsigninsfi` (case-insensitive). Policies are a routing/labelling construct only - they don't alter claim construction or authentication UX. The active policy is reflected in issued ID tokens as the `acr` claim.
 
-The cache-clearing endpoints return `204` and affect only the cache in the application instance handling the request. They do not change database contents. Subsequent lookups repopulate the cache from MongoDB; in a multi-instance setup, send a request to each instance you want to clear.
+The cache-clearing endpoints return `204`, are intentionally unauthenticated, and affect only the cache in the application instance handling the request. They do not change database contents. Subsequent lookups repopulate the cache from MongoDB; in a multi-instance setup, send a request to each instance you want to clear.
+
+### Admin API
+
+All `/admin` endpoints require `api-key: <ADMIN_API_KEY>` and return `401` when the header is missing or invalid. The Admin API is a shared-secret test-tooling surface for account management only; client registration remains static at startup. Set `ADMIN_API_KEY` before starting the application. Do not use the fixed local-development or integration-test keys outside those environments.
+
+| Method and path | Behaviour |
+|-----------------|-----------|
+| `GET /admin/accounts` | Returns all accounts as an array. |
+| `GET /admin/accounts/{sub}` | Returns an account by GUID `sub`, or `404`. |
+| `GET /admin/accounts?email={email}` | Returns one account by email, or `404`. |
+| `POST /admin/accounts` | Creates an account; returns `201`, or `409` if a unique account field conflicts. |
+| `PUT /admin/accounts/{sub}` | Replaces an account, or creates it when absent; returns `200`. The path `sub` is authoritative. |
+| `PATCH /admin/accounts/{sub}` | Shallowly merges top-level fields; returns `200`, or `404`. |
+| `DELETE /admin/accounts/{sub}` | Deletes an account; returns `204`, or `404`. |
+
+Invalid JSON account shapes or GUIDs return `400`; duplicate-key errors return `409`. Successful account responses include MongoDB `_id`, `createdAt`, and `updatedAt`. PATCH replaces a supplied top-level object as a whole; it does not recursively merge nested fields. Account writes invalidate the affected cache entries on the instance handling the request. Other instances may retain cached account data until their configured account-cache TTL expires.
+
+#### HTTP request examples
+
+These examples use the default local address. Replace `<ADMIN_API_KEY>` with your configured key and use your own account identifiers and values. The POST example creates the account used by the other examples; the DELETE example removes it.
+
+##### List all accounts
+
+```http
+GET /admin/accounts HTTP/1.1
+Host: localhost:3000
+api-key: <ADMIN_API_KEY>
+```
+
+##### Get an account by subject
+
+```http
+GET /admin/accounts/11111111-1111-4111-8111-111111111111 HTTP/1.1
+Host: localhost:3000
+api-key: <ADMIN_API_KEY>
+```
+
+##### Get an account by email
+
+URL-encode the email query parameter.
+
+```http
+GET /admin/accounts?email=alice%40example.test HTTP/1.1
+Host: localhost:3000
+api-key: <ADMIN_API_KEY>
+```
+
+##### Create an account
+
+Supply the account document without MongoDB `_id` or server-managed timestamps. See [Account Model](#account-model) for the account fields and relationship structure.
+
+```http
+POST /admin/accounts HTTP/1.1
+Host: localhost:3000
+api-key: <ADMIN_API_KEY>
+Content-Type: application/json
+
+{
+  "sub": "11111111-1111-4111-8111-111111111111",
+  "email": "alice@example.test",
+  "firstName": "Alice",
+  "lastName": "Example",
+  "contactId": "22222222-2222-4222-8222-222222222222",
+  "loa": 2,
+  "aal": 1,
+  "amr": "scp",
+  "relationships": []
+}
+```
+
+##### Replace or create an account
+
+PUT replaces the entire account document, removing omitted account fields. If the subject does not exist, it creates the account instead. Supply all the account fields you want to retain.
+
+```http
+PUT /admin/accounts/11111111-1111-4111-8111-111111111111 HTTP/1.1
+Host: localhost:3000
+api-key: <ADMIN_API_KEY>
+Content-Type: application/json
+
+{
+  "sub": "11111111-1111-4111-8111-111111111111",
+  "email": "alice@example.test",
+  "firstName": "Alice",
+  "lastName": "Updated",
+  "contactId": "22222222-2222-4222-8222-222222222222",
+  "loa": 2,
+  "aal": 1,
+  "amr": "scp",
+  "relationships": []
+}
+```
+
+##### Partially update an account
+
+Only the supplied top-level fields change; other account fields remain unchanged, apart from the server-managed `updatedAt`. Sending a `relationships` array replaces the whole array.
+
+```http
+PATCH /admin/accounts/11111111-1111-4111-8111-111111111111 HTTP/1.1
+Host: localhost:3000
+api-key: <ADMIN_API_KEY>
+Content-Type: application/json
+
+{
+  "lastName": "Patched",
+  "loa": 3
+}
+```
+
+##### Delete an account
+
+```http
+DELETE /admin/accounts/11111111-1111-4111-8111-111111111111 HTTP/1.1
+Host: localhost:3000
+api-key: <ADMIN_API_KEY>
+```
 
 ### Health Checks
 

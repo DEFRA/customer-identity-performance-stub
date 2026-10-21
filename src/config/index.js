@@ -91,6 +91,7 @@ export default {
   port,
   host,
   isProduction,
+  adminApiKey: process.env.ADMIN_API_KEY,
   oidc,
   db,
   accountCache,

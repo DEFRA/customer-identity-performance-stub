@@ -1,0 +1,71 @@
+# Admin API requests for the VS Code REST Client extension (humao.rest-client).
+# Values are read from requests/.env (copy requests/.env.example to create it).
+# Run "Create an account" first; the other requests use the same sub and email.
+
+@baseUrl = {{$dotenv BASE_URL}}
+@adminApiKey = {{$dotenv ADMIN_API_KEY}}
+@sub = {{$dotenv ACCOUNT_SUB}}
+@email = {{$dotenv ACCOUNT_EMAIL}}
+
+### List all accounts
+GET {{baseUrl}}/admin/accounts
+api-key: {{adminApiKey}}
+
+### Create an account
+POST {{baseUrl}}/admin/accounts
+api-key: {{adminApiKey}}
+Content-Type: application/json
+
+{
+  "sub": "{{sub}}",
+  "email": "{{email}}",
+  "firstName": "Alice",
+  "lastName": "Example",
+  "contactId": "22222222-2222-4222-8222-222222222222",
+  "loa": 2,
+  "aal": 1,
+  "amr": "scp",
+  "relationships": []
+}
+
+### Get an account by sub
+GET {{baseUrl}}/admin/accounts/{{sub}}
+api-key: {{adminApiKey}}
+
+### Get an account by email
+GET {{baseUrl}}/admin/accounts?email={{email}}
+api-key: {{adminApiKey}}
+
+### Replace an account, or create it when absent
+PUT {{baseUrl}}/admin/accounts/{{sub}}
+api-key: {{adminApiKey}}
+Content-Type: application/json
+
+{
+  "sub": "{{sub}}",
+  "email": "{{email}}",
+  "firstName": "Alice",
+  "lastName": "Replaced",
+  "contactId": "22222222-2222-4222-8222-222222222222",
+  "loa": 2,
+  "aal": 1,
+  "amr": "scp",
+  "relationships": []
+}
+
+### Partially update an account (shallow merge of top-level fields)
+PATCH {{baseUrl}}/admin/accounts/{{sub}}
+api-key: {{adminApiKey}}
+Content-Type: application/json
+
+{
+  "lastName": "Patched",
+  "loa": 3
+}
+
+### Delete an account
+DELETE {{baseUrl}}/admin/accounts/{{sub}}
+api-key: {{adminApiKey}}
+
+### Missing api-key header returns 401
+GET {{baseUrl}}/admin/accounts

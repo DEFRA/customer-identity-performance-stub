@@ -10,6 +10,9 @@ import { connect, disconnect } from './db/index.js'
 import { ensureOidcIndexes, ensureAccountIndexes } from './oidc/ensure-indexes.js'
 import { seedAccountsFromFile } from './db/seed-accounts-from-file.js'
 import logger from './logging/logger.js'
+import { assertAdminApiKeyConfigured } from './admin/auth.js'
+
+assertAdminApiKeyConfigured(config.adminApiKey)
 
 const server = Hapi.server({
   port: config.port,
