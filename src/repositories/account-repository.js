@@ -220,6 +220,10 @@ export function createAccountRepository ({
     return findCachedAccountByLookup(lookupCacheKey('login', identifier), find)
   }
 
+  function clearCache () {
+    cache.clear()
+  }
+
   return {
     create,
     findById,
@@ -227,7 +231,8 @@ export function createAccountRepository ({
     update,
     deleteById,
     findBySub,
-    findByLoginIdentifier
+    findByLoginIdentifier,
+    clearCache
   }
 }
 
@@ -240,5 +245,6 @@ export const update = accountRepository.update
 export const deleteById = accountRepository.deleteById
 export const findBySub = accountRepository.findBySub
 export const findByLoginIdentifier = accountRepository.findByLoginIdentifier
+export const clearCache = accountRepository.clearCache
 
 export default accountRepository

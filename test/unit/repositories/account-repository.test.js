@@ -144,6 +144,19 @@ describe('account repository cache', () => {
     assert.equal(collection.find.mock.calls.length, 2)
   })
 
+  it('clears all cached accounts so subsequent lookups read from MongoDB', async () => {
+    const account = { _id: new ObjectId(), sub: 'subject-1' }
+    const { repository, collection } = createTestRepository({
+      findOne: async () => account
+    })
+
+    assert.equal(await repository.findBySub('subject-1'), account)
+    repository.clearCache()
+    assert.equal(await repository.findBySub('subject-1'), account)
+
+    assert.equal(collection.findOne.mock.calls.length, 2)
+  })
+
   it('keeps unrelated cached accounts after creating an account', async () => {
     const existingAccount = { _id: new ObjectId(), sub: 'subject-1' }
     const insertedId = new ObjectId()

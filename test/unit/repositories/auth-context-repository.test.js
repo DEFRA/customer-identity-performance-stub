@@ -64,6 +64,19 @@ describe('auth context repository cache', () => {
     assert.equal(collection.findOne.mock.calls.length, 2)
   })
 
+  it('clears cached contexts so subsequent lookups read from MongoDB', async () => {
+    const context = { _id: 'grant-1', serviceId: 'service-1', createdAt: new Date() }
+    const { repository, collection } = createTestRepository({
+      findOne: async () => context
+    })
+
+    assert.equal(await repository.findByGrantId('grant-1'), context)
+    repository.clearCache()
+    assert.equal(await repository.findByGrantId('grant-1'), context)
+
+    assert.equal(collection.findOne.mock.calls.length, 2)
+  })
+
   it('does not cache contexts without a valid unexpired creation time', async () => {
     const expiredContext = {
       _id: 'expired-grant',

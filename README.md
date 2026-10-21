@@ -514,8 +514,12 @@ The stub exposes the following endpoints:
 | **End Session** | `GET /{policyId}/oidc/session/end` | `GET /oidc/session/end?p={policyId}` |
 | **Liveness** | `GET /health/live` | — |
 | **Readiness** | `GET /health/ready` | — |
+| **Clear account cache** | `DELETE /cache/accounts` | — |
+| **Clear auth-context cache** | `DELETE /cache/auth-context` | — |
 
 Valid policy IDs: `b2c_1a_signupsignin`, `b2c_1a_signupsigninalt`, `b2c_1a_signupsigninsfi` (case-insensitive). Policies are a routing/labelling construct only - they don't alter claim construction or authentication UX. The active policy is reflected in issued ID tokens as the `acr` claim.
+
+The cache-clearing endpoints return `204` and affect only the cache in the application instance handling the request. They do not change database contents. Subsequent lookups repopulate the cache from MongoDB; in a multi-instance setup, send a request to each instance you want to clear.
 
 ### Health Checks
 

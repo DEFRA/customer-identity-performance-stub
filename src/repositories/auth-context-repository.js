@@ -75,9 +75,14 @@ export function createAuthContextRepository ({
     return context
   }
 
+  function clearCache () {
+    cache.clear()
+  }
+
   return {
     save,
-    findByGrantId
+    findByGrantId,
+    clearCache
   }
 }
 
@@ -85,8 +90,10 @@ const authContextRepository = createAuthContextRepository()
 
 export const save = authContextRepository.save
 export const findByGrantId = authContextRepository.findByGrantId
+export const clearCache = authContextRepository.clearCache
 
 export default {
   save,
-  findByGrantId
+  findByGrantId,
+  clearCache
 }
