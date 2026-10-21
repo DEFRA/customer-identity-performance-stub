@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import test from 'node:test'
 
 const baseUrl = process.env.TEST_BASE_URL || 'http://localhost:3000'
+const adminApiKey = process.env.ADMIN_API_KEY || 'integration-test-admin-key'
 const clientId = process.env.CLIENT_ID || 'integration-test-client'
 const clientSecret = process.env.CLIENT_SECRET || 'integration-test-secret'
 const redirectUri = 'http://localhost:3001/cb'
@@ -182,6 +183,47 @@ test('completes the authorization code + refresh token flow and returns valid cl
   const refreshedTokenResponse = await refreshTokens(metadata.token_endpoint, tokenResponse.refresh_token)
   assert.ok(refreshedTokenResponse.access_token)
   assert.ok(refreshedTokenResponse.id_token)
+})
+
+test('an account created through the Admin API can complete an OIDC sign-in', async () => {
+  const sub = crypto.randomUUID()
+  const email = `admin-flow-${sub}@example.test`
+  const seedAccountResponse = await fetch(`${baseUrl}/admin/accounts/a1b2c3d4-0001-0001-0001-000000000001`, {
+    headers: { 'api-key': adminApiKey }
+  })
+  assert.equal(seedAccountResponse.status, 200)
+  const account = await seedAccountResponse.json()
+  account.sub = sub
+  account.email = email
+  account.contactId = crypto.randomUUID()
+  account.uniqueReference = crypto.randomUUID()
+  delete account._id
+  delete account.createdAt
+  delete account.updatedAt
+
+  try {
+    const createResponse = await fetch(`${baseUrl}/admin/accounts`, {
+      method: 'POST',
+      headers: {
+        'api-key': adminApiKey,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(account)
+    })
+    assert.equal(createResponse.status, 201)
+
+    const metadata = await fetchMetadata()
+    const { code, codeVerifier } = await performLogin(metadata, new Map(), { username: email })
+    const tokens = await exchangeCodeForTokens(metadata.token_endpoint, code, codeVerifier)
+    assert.equal(decodeJwt(tokens.id_token).sub, sub)
+    assert.equal(decodeJwt(tokens.id_token).email, email)
+  } finally {
+    const deleteResponse = await fetch(`${baseUrl}/admin/accounts/${sub}`, {
+      method: 'DELETE',
+      headers: { 'api-key': adminApiKey }
+    })
+    assert.ok([204, 404].includes(deleteResponse.status))
+  }
 })
 
 test('narrows relationships and roles to the requested relationshipId', async () => {

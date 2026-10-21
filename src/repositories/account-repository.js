@@ -54,6 +54,9 @@ export function createAccountRepository ({
     if (typeof account.sub === 'string') {
       cache.set(lookupCacheKey('sub', account.sub), id, options)
     }
+    if (typeof account.email === 'string') {
+      cache.set(lookupCacheKey('email', account.email), id, options)
+    }
     if (lookupKey) {
       cache.set(lookupKey, id, options)
     }
@@ -71,6 +74,7 @@ export function createAccountRepository ({
       cache.delete(lookupCacheKey('sub', account.sub))
     }
     if (typeof account?.email === 'string') {
+      cache.delete(lookupCacheKey('email', account.email))
       cache.delete(lookupCacheKey('login', account.email))
     }
     if (typeof account?.crn === 'string') {
@@ -103,13 +107,14 @@ export function createAccountRepository ({
    */
   async function create (account) {
     const collection = await getCollection()
-    const result = await collection.insertOne({
+    const document = {
       ...account,
       createdAt: new Date(),
       updatedAt: new Date()
-    })
-    invalidateAccountLookups(account)
-    return { _id: result.insertedId, ...account }
+    }
+    const result = await collection.insertOne(document)
+    invalidateAccountLookups(document)
+    return { ...document, _id: result.insertedId }
   }
 
   /**
@@ -157,14 +162,18 @@ export function createAccountRepository ({
   async function update (id, updates) {
     const collection = await getCollection()
     const objectId = typeof id === 'string' ? new ObjectId(id) : id
-    const result = await collection.findOneAndUpdate(
+    const existingAccount = await collection.findOne({ _id: objectId })
+    const updatedAccount = await collection.findOneAndUpdate(
       { _id: objectId },
       { $set: { ...updates, updatedAt: new Date() } },
       { returnDocument: 'after' }
     )
-    invalidateAccount(objectId)
-    invalidateAccountLookups(result.value)
-    return result.value
+    if (updatedAccount) {
+      invalidateAccount(objectId)
+      invalidateAccountLookups(existingAccount)
+      invalidateAccountLookups(updatedAccount)
+    }
+    return updatedAccount
   }
 
   /**
@@ -175,9 +184,11 @@ export function createAccountRepository ({
   async function deleteById (id) {
     const collection = await getCollection()
     const objectId = typeof id === 'string' ? new ObjectId(id) : id
+    const existingAccount = await collection.findOne({ _id: objectId })
     const result = await collection.deleteOne({ _id: objectId })
     if (result.deletedCount > 0) {
       invalidateAccount(objectId)
+      invalidateAccountLookups(existingAccount)
     }
     return result.deletedCount > 0
   }
@@ -197,6 +208,92 @@ export function createAccountRepository ({
       const collection = await getCollection()
       return collection.findOne({ sub })
     })
+  }
+
+  /**
+   * Find an account by email address, using the account email index's collation
+   * @param {string} email
+   * @returns {Promise<object|null>}
+   */
+  async function findByEmail (email) {
+    return findCachedAccountByLookup(lookupCacheKey('email', email), async () => {
+      const collection = await getCollection()
+      return collection.findOne({ email }, { collation: caseInsensitiveCollation })
+    })
+  }
+
+  /**
+   * Replace or create an account identified by its subject
+   * @param {string} sub
+   * @param {object} account
+   * @returns {Promise<object|null>}
+   */
+  async function replaceBySub (sub, account) {
+    const collection = await getCollection()
+    const existingAccount = await collection.findOne({ sub })
+    const replacement = { ...account, sub }
+    delete replacement._id
+
+    const now = new Date()
+    replacement.createdAt = existingAccount?.createdAt ?? now
+    replacement.updatedAt = now
+
+    const replacedAccount = await collection.findOneAndReplace(
+      { sub },
+      replacement,
+      { upsert: true, returnDocument: 'after' }
+    )
+
+    invalidateAccountLookups(existingAccount)
+    invalidateAccountLookups(replacedAccount)
+    if (existingAccount?._id) {
+      invalidateAccount(existingAccount._id)
+    }
+    if (replacedAccount?._id) {
+      invalidateAccount(replacedAccount._id)
+    }
+    return replacedAccount
+  }
+
+  /**
+   * Apply a shallow update to an account identified by its subject
+   * @param {string} sub
+   * @param {object} fields
+   * @returns {Promise<object|null>}
+   */
+  async function patchBySub (sub, fields) {
+    const collection = await getCollection()
+    const existingAccount = await collection.findOne({ sub })
+    if (!existingAccount) {
+      return null
+    }
+
+    const updatedAccount = await collection.findOneAndUpdate(
+      { sub },
+      { $set: { ...fields, updatedAt: new Date() } },
+      { returnDocument: 'after' }
+    )
+    if (updatedAccount) {
+      invalidateAccount(existingAccount._id)
+      invalidateAccountLookups(existingAccount)
+      invalidateAccountLookups(updatedAccount)
+    }
+    return updatedAccount
+  }
+
+  /**
+   * Delete an account by its subject
+   * @param {string} sub
+   * @returns {Promise<object|null>} Deleted account or null
+   */
+  async function deleteBySub (sub) {
+    const collection = await getCollection()
+    const deletedAccount = await collection.findOneAndDelete({ sub })
+    if (deletedAccount) {
+      invalidateAccount(deletedAccount._id)
+      invalidateAccountLookups(deletedAccount)
+    }
+    return deletedAccount
   }
 
   /**
@@ -231,7 +328,11 @@ export function createAccountRepository ({
     update,
     deleteById,
     findBySub,
+    findByEmail,
     findByLoginIdentifier,
+    replaceBySub,
+    patchBySub,
+    deleteBySub,
     clearCache
   }
 }
@@ -244,7 +345,11 @@ export const findAll = accountRepository.findAll
 export const update = accountRepository.update
 export const deleteById = accountRepository.deleteById
 export const findBySub = accountRepository.findBySub
+export const findByEmail = accountRepository.findByEmail
 export const findByLoginIdentifier = accountRepository.findByLoginIdentifier
+export const replaceBySub = accountRepository.replaceBySub
+export const patchBySub = accountRepository.patchBySub
+export const deleteBySub = accountRepository.deleteBySub
 export const clearCache = accountRepository.clearCache
 
 export default accountRepository

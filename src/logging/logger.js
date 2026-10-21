@@ -11,6 +11,7 @@ import config from '../config/index.js'
 export const redactPaths = [
   'req.headers.authorization',
   'req.headers.cookie',
+  'req.headers["api-key"]',
   'res.headers["set-cookie"]',
   'client_secret',
   'password'

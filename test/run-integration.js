@@ -13,6 +13,7 @@ const baseUrl = process.env.TEST_BASE_URL || 'http://localhost:3000'
 // Dedicated, non-secret client registered only for headless integration test runs
 process.env.CLIENT_ID ??= 'integration-test-client'
 process.env.CLIENT_SECRET ??= 'integration-test-secret'
+process.env.ADMIN_API_KEY ??= 'integration-test-admin-key'
 process.env.OIDC_CLIENTS ??= JSON.stringify([{
   client_id: process.env.CLIENT_ID,
   client_secret: process.env.CLIENT_SECRET,
