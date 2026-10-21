@@ -105,23 +105,23 @@ describe('ensureOidcIndexes', () => {
   it('retries without expireAfterSeconds when Cosmos DB rejects the TTL option (handles old and new error strings)', async () => {
     const errorMessagesToTest = [
       "The 'expireAfterSeconds' option is currently not supported.",
-      "TTL index is already set up with different value."
+      'TTL index is already set up with different value.'
     ]
 
     for (const actualCosmosErrMsg of errorMessagesToTest) {
       let lastIndexes = null
 
       const fakeDb = {
-        collection(name) {
+        collection (name) {
           return {
             collectionName: name || 'Session',
-            async indexes() {
+            async indexes () {
               return []
             },
-            async createIndexes(indexes) {
+            async createIndexes (indexes) {
               lastIndexes = indexes
               if (indexes.some((index) => 'expireAfterSeconds' in index)) {
-                const error = new Error("MongoServerError")
+                const error = new Error('MongoServerError')
                 error.code = 2
                 error.errorResponse = {
                   ok: 0,

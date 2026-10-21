@@ -54,12 +54,12 @@ const stripUnsupportedOption = (error, indexes) => {
 
   // Catch both Cosmos DB TTL variations (BadValue / Code 2)
   if (error.code === 2 && indexes.some((index) => 'expireAfterSeconds' in index)) {
-    const errMsg = error.errorResponse?.errmsg ?? '';
+    const errMsg = error.errorResponse?.errmsg ?? ''
     if (
-      /expireAfterSeconds/.test(errMsg) || 
+      /expireAfterSeconds/.test(errMsg) ||
       /TTL index is already set up/.test(errMsg)
     ) {
-      return indexes.map(({ expireAfterSeconds, ...index }) => index);
+      return indexes.map(({ expireAfterSeconds, ...index }) => index)
     }
   }
 
@@ -93,7 +93,7 @@ async function createIndexesReplacingConflicts (collection, indexes, attempt = 0
       return createIndexesReplacingConflicts(collection, indexes, attempt + 1)
     }
 
-    // Handle unsupported engine options 
+    // Handle unsupported engine options
     const strippedIndexes = stripUnsupportedOption(error, indexes)
     if (strippedIndexes) {
       return createIndexesReplacingConflicts(collection, strippedIndexes, attempt)

@@ -6,7 +6,8 @@ ARG INCLUDE_DEV_DATA=false
 FROM scratch AS conditional-data-true
 COPY ./data/accounts.development.json /tmp/data/accounts.development.json
 
-FROM scratch AS conditional-data-false
+FROM defradigital/node-development:${PARENT_VERSION} AS conditional-data-false
+RUN mkdir -p /tmp/data
 
 FROM conditional-data-${INCLUDE_DEV_DATA} AS final-data
 

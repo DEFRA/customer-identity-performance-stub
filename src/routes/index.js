@@ -7,11 +7,13 @@ import homeRoute from './home.js'
 import oidcRoutes from './oidc.js'
 import interactionRoutes from './interaction.js'
 import healthRoutes from './health.js'
+import cacheRoutes from './cache.js'
 
 export default [
   homeRoute,
   ...oidcRoutes,
   ...interactionRoutes,
-  ...healthRoutes
+  ...healthRoutes,
+  ...cacheRoutes
   // Additional routes registered here
 ]
