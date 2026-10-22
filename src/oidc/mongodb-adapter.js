@@ -25,7 +25,7 @@ class MongoAdapter {
       expiresAt = new Date(Date.now() + (expiresIn * 1000))
       // Cosmos DB's per-document TTL override (see ensure-indexes.js) - ignored by real
       // MongoDB, which has no special meaning for a root-level "ttl" field. Observed
-      // unreliable on the Linux Cosmos DB Emulator; expiresAt is what real MongoDB relies on
+      // unreliable on the Linux/WSL2 Cosmos DB Emulator; expiresAt is what real MongoDB relies on
       ttl = Math.floor(expiresIn)
     }
 

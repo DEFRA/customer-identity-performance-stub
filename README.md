@@ -61,7 +61,7 @@ To run against the Azure Cosmos DB Emulator for MongoDB instead of the default M
 npm run compose:cosmos:up
 ```
 
-The override replaces the `db` service with the Linux emulator, enables its MongoDB 4.2 endpoint, and supplies the emulator connection string to the stub automatically. The application remains available at `http://localhost:3000`; the emulator exposes its data explorer at `https://localhost:8081/_explorer/index.html` and its MongoDB endpoint at `localhost:10255`.
+The override replaces the `db` service with the Linux/WSL2 emulator, enables its MongoDB 4.2 endpoint, and supplies the emulator connection string to the stub automatically. The application remains available at `http://localhost:3000`; the emulator exposes its data explorer at `https://localhost:8081/_explorer/index.html` and its MongoDB endpoint at `localhost:10255`.
 
 Use the matching scripts to manage either stack:
 
@@ -75,7 +75,9 @@ The `reset` scripts remove and recreate the selected stack. This deletes locally
 
 The emulator uses a self-signed certificate. Certificate validation is disabled only in the local emulator connection string and must not be used for remote or production database connections. The emulator can take a minute or more to become healthy and requires more memory than the standard MongoDB container.
 
-TTL-based expiry (sessions, tokens, grants, etc.) is best-effort on the Linux Cosmos DB Emulator specifically - its per-document TTL override has been observed not to reliably delete expired documents even after many minutes, unlike real MongoDB or Azure Cosmos DB for MongoDB. Don't rely on the emulator to verify expiry behavior; use the default MongoDB stack or a real Cosmos DB for MongoDB account for that.
+TTL-based expiry (sessions, tokens, grants, etc.) is not available on the Linux/WSL2 Cosmos DB Emulator - it rejects `expireAfterSeconds` even on `_ts`, so with `MONGO_BACKEND=cosmos-emulator` (set by the Compose override) the TTL index is skipped with a warning and expired documents are not removed, unlike real MongoDB or Azure Cosmos DB for MongoDB. Don't rely on the emulator to verify expiry behavior; use the default MongoDB stack or a real Cosmos DB for MongoDB account for that.
+
+For an existing Cosmos DB deployment created with an earlier version, stop the app and back up the database before changing indexes. If startup reports an incompatible index or stuck collection metadata, remove and recreate only the transient OIDC collections (`Session`, `AccessToken`, `AuthorizationCode`, `RefreshToken`, `Grant`, and `Interaction`) and `authContexts`, then restart the app. This invalidates active sessions, tokens, and grants. **Do not delete the `accounts` collection.**
 
 The emulator also rejects the case-insensitive `collation` option used on the `accounts.email` index; account login email matching falls back to case-sensitive on the emulator specifically, unlike real MongoDB or Azure Cosmos DB for MongoDB.
 
@@ -319,6 +321,7 @@ Environment variables are usually loaded from `.env` for local development.
 | `OIDC_CLIENTS` | Yes for OIDC flows | JSON array | Registered OIDC clients. If omitted, no clients are registered. |
 | `ADMIN_API_KEY` | Yes | — | Shared secret required to call the account-management Admin API using the `api-key` header. The application fails to start if it is unset or blank. |
 | `SIGNING_KEY` | No | generated at startup | Base64-encoded PKCS#8 PEM RSA private key. Use a stable value when token validators must survive stub restarts. |
+| `MONGO_BACKEND` | No | `mongodb` | Mongo-compatible database type: `mongodb`, `cosmos` (Azure Cosmos DB for MongoDB) or `cosmos-emulator` (local Linux/WSL2 Cosmos DB Emulator). Selects the appropriate TTL index definitions. With `cosmos`, startup fails if the `_ts` TTL index is rejected; with `cosmos-emulator`, the TTL index is skipped with a warning when the emulator rejects it, so expired documents are not removed. The Cosmos Compose override sets `cosmos-emulator` automatically. |
 | `MONGO_URL` | Yes | `mongodb://mongoadmin:secret@db:27017/?authSource=admin` | MongoDB connection string. Use `db` inside Docker Compose and `localhost` when the app runs on the host. |
 | `MONGO_DB_NAME` | No | `cidm-stub` | MongoDB database name. |
 | `MONGO_TIMEOUT` | No | `5000` | MongoDB connection timeout in milliseconds. |
@@ -347,6 +350,7 @@ Set `SIGNING_KEY` to the base64 output. Keep this value secret in shared environ
 
 For `npm run dev` on host: use `mongodb://mongoadmin:secret@localhost:27017/?authSource=admin` (requires a local MongoDB with matching auth, see Option 2 above).
 When using the Cosmos DB Emulator Compose override, its `MONGO_URL` takes precedence over the value in `.env`.
+MongoDB uses `expiresAt` TTL indexes for OIDC documents and `createdAt` for `authContexts`; Cosmos uses `_ts` TTL indexes because its Mongo API does not support TTL indexes on those application fields. The app does not drop conflicting indexes on Cosmos DB startup. For MongoDB, startup repairs only the index reported as conflicting.
 
 ### Logging
 
@@ -430,6 +434,14 @@ only forwards the current `OIDC_CLIENTS` and `ADMIN_API_KEY` environment variabl
 it does not set them itself. Running it directly without matching values may start a stack that
 cannot pass the headless tests. Prefer `npm run test:integration:local`, or export matching values
 before `npm run compose:test:up`.
+
+If the default app or MongoDB host ports are already in use, override them for the local test stack.
+Keep `TEST_BASE_URL` aligned with `TEST_APP_PORT` and use an app port other than the test client's
+callback port (`3001`), for example:
+
+```sh
+MONGO_TEST_PORT=27018 TEST_APP_PORT=3002 TEST_BASE_URL=http://localhost:3002 npm run test:integration:local
+```
 
 ### Scripts
 

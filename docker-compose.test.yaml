@@ -3,5 +3,6 @@
 services:
   cidm-stub:
     environment:
+      MONGO_BACKEND: mongodb
       OIDC_CLIENTS: ${OIDC_CLIENTS}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-integration-test-admin-key}
