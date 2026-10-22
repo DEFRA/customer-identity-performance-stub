@@ -65,7 +65,12 @@ const oidc = {
 const db = {
   url: process.env.MONGO_URL || 'mongodb://localhost:27017',
   name: process.env.MONGO_DB_NAME || 'cidm-stub',
-  timeout: parseInt(process.env.MONGO_TIMEOUT || '5000', 10)
+  timeout: parseInt(process.env.MONGO_TIMEOUT || '5000', 10),
+  mongoBackend: process.env.MONGO_BACKEND?.trim().toLowerCase() || 'mongodb'
+}
+
+if (!['mongodb', 'cosmos', 'cosmos-emulator'].includes(db.mongoBackend)) {
+  throw new Error("MONGO_BACKEND must be one of 'mongodb', 'cosmos' or 'cosmos-emulator'")
 }
 
 const accountCache = {

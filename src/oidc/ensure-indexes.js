@@ -6,6 +6,7 @@ import { getDb } from '../db/index.js'
 import { caseInsensitiveCollation } from '../repositories/account-repository.js'
 import config from '../config/index.js'
 import logger from '../logging/logger.js'
+import { isDeepStrictEqual } from 'node:util'
 
 const grantable = new Set([
   'AccessToken',
@@ -27,13 +28,12 @@ const collectionNames = [
 // different options (e.g. an older deployment's unique payload.uid_1 index)
 const indexConflictCodes = new Set([85, 86])
 
-// Cosmos DB implicitly provisions a container on each collection's first createIndexes
-// call, and can respond with a transient ServiceUnavailable if provisioning is briefly
-// overloaded - this can happen per-collection, not just for the very first one
-const isTransientServiceUnavailable = (error) =>
-  error.code === 1 && /ServiceUnavailable/.test(error.errorResponse?.errmsg ?? '')
+// Cosmos DB can return either error while collection metadata is being provisioned or repaired.
+const isTransientMetadataError = (error) =>
+  error.code === 1 &&
+  /ServiceUnavailable|Detected stuck collection metadata/.test(error.errorResponse?.errmsg ?? error.message)
 
-const maxTransientRetries = 20
+const maxIndexRetries = 20
 const maxRetryDelayMs = 5000
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -43,94 +43,155 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const autoIndexName = (key) =>
   Object.entries(key).map(([field, direction]) => `${field}_${direction}`).join('_')
 
-// Index options Cosmos DB's older Mongo API wire versions reject; stripped only from
-// the offending index and retried, so real MongoDB and newer Cosmos DB for MongoDB
-// accounts still get the full behaviour (unique constraint, TTL cleanup)
-const stripUnsupportedOption = (error, indexes) => {
+// Index options rejected by a particular Cosmos DB endpoint; remove only the unsupported
+// option from affected indexes, without weakening unrelated index definitions.
+const stripUnsupportedOption = (error, indexes, backend) => {
   // "Unique and compound indexes do not support nested paths" (CommandNotSupported)
   if (error.code === 115 && indexes.some((index) => index.unique)) {
-    return indexes.map(({ unique, ...index }) => index)
+    const strippedIndexes = indexes.map((index) => {
+      if (index.unique && Object.keys(index.key).some((field) => field.includes('.'))) {
+        const { unique, ...supportedIndex } = index
+        return supportedIndex
+      }
+      return index
+    })
+    return strippedIndexes.some((index, position) => index !== indexes[position])
+      ? strippedIndexes
+      : null
   }
 
-  // Catch both Cosmos DB TTL variations (BadValue / Code 2)
-  if (error.code === 2 && indexes.some((index) => 'expireAfterSeconds' in index)) {
-    const errMsg = error.errorResponse?.errmsg ?? ''
-    if (
-      /expireAfterSeconds/.test(errMsg) ||
-      /TTL index is already set up/.test(errMsg)
-    ) {
-      return indexes.map(({ expireAfterSeconds, ...index }) => index)
-    }
+  // The Linux/WSL2 Cosmos DB Emulator rejects TTL even on _ts; real Cosmos DB must keep it, so
+  // only the emulator backend falls back to no TTL (expired documents are not cleaned up)
+  if (
+    backend === 'cosmos-emulator' &&
+    error.code === 2 &&
+    /expireAfterSeconds|TTL index/.test(error.errorResponse?.errmsg ?? error.message) &&
+    indexes.some((index) => 'expireAfterSeconds' in index)
+  ) {
+    logger.warn('Cosmos DB Emulator rejected the TTL index - expired documents will not be removed automatically')
+    return indexes.map((index) => {
+      if (!('expireAfterSeconds' in index)) return index
+      const { expireAfterSeconds, ...supportedIndex } = index
+      return supportedIndex
+    })
   }
 
   // "collation" (InvalidIndexSpecificationOption) - Cosmos DB Emulator doesn't support custom
   // collations; email lookups fall back to an exact-match index there (see account-repository.js)
   if (error.code === 197 && indexes.some((index) => 'collation' in index)) {
-    return indexes.map(({ collation, ...index }) => index)
+    return indexes.map((index) => {
+      if (!('collation' in index)) return index
+      const { collation, ...supportedIndex } = index
+      return supportedIndex
+    })
   }
 
   return null
 }
 
+const comparableIndexOptions = [
+  'unique',
+  'sparse',
+  'expireAfterSeconds',
+  'collation',
+  'partialFilterExpression'
+]
+
+const indexOptionsMatch = (existing, requested) =>
+  comparableIndexOptions.every((option) => {
+    if (option === 'unique' || option === 'sparse') {
+      return Boolean(existing[option]) === Boolean(requested[option])
+    }
+    return isDeepStrictEqual(existing[option], requested[option])
+  })
+
+const getConflictingIndex = (requestedIndexes, existingIndexes, error) => {
+  const conflicts = []
+
+  for (const requested of requestedIndexes) {
+    const name = requested.name ?? autoIndexName(requested.key)
+    for (const existing of existingIndexes) {
+      const sameName = existing.name === name
+      const sameKey = isDeepStrictEqual(existing.key, requested.key)
+
+      if ((sameName || sameKey) && (!sameKey || !indexOptionsMatch(existing, requested))) {
+        conflicts.push(existing)
+      }
+    }
+  }
+
+  const errorMessage = error.errorResponse?.errmsg ?? error.message
+  const namedConflict = errorMessage.match(/index with name:\s*([^\s]+)/i)?.[1]
+  return conflicts.find((index) => index.name === namedConflict) ?? conflicts[0]
+}
+
 /**
  * Create indexes on a collection, replacing any pre-existing index that has the same
- * name/keys but conflicting options, and stripping any option Cosmos DB doesn't support
+ * name/keys but conflicting options on MongoDB. Cosmos DB conflicts are never dropped
+ * automatically because index operations can leave collection metadata stuck.
  * @param {import('mongodb').Collection} collection
  * @param {object[]} indexes
+ * @param {'mongodb'|'cosmos'|'cosmos-emulator'} backend
  * @param {number} [attempt] - Current retry attempt, used internally for backoff
  * @returns {Promise<void>}
  */
-async function createIndexesReplacingConflicts (collection, indexes, attempt = 0) {
+async function createIndexesReplacingConflicts (collection, indexes, backend, attempt = 0) {
   try {
     await collection.createIndexes(indexes)
     logger.info(`mongo indexes created successfully for collection ${collection.collectionName}`)
   } catch (error) {
-    logger.warn(`mongo indexes creation error for collection ${collection.collectionName}: ${error} - code will retry with best effort`)
+    logger.warn(`database indexes creation error for collection ${collection.collectionName}: ${error}`)
 
-    // Handle transient service unavailabilities
-    if (isTransientServiceUnavailable(error) && attempt < maxTransientRetries) {
+    if (isTransientMetadataError(error)) {
+      if (attempt >= maxIndexRetries) {
+        throw new Error(
+          `Index creation for collection ${collection.collectionName} failed after ${maxIndexRetries} retries due to transient Cosmos DB metadata errors`,
+          { cause: error }
+        )
+      }
       await delay(Math.min(500 * (attempt + 1), maxRetryDelayMs))
-      return createIndexesReplacingConflicts(collection, indexes, attempt + 1)
+      return createIndexesReplacingConflicts(collection, indexes, backend, attempt + 1)
     }
 
     // Handle unsupported engine options
-    const strippedIndexes = stripUnsupportedOption(error, indexes)
+    const strippedIndexes = stripUnsupportedOption(error, indexes, backend)
     if (strippedIndexes) {
-      return createIndexesReplacingConflicts(collection, strippedIndexes, attempt)
+      return createIndexesReplacingConflicts(collection, strippedIndexes, backend, attempt)
     }
 
     // If it's not a conflict code we know how to fix, bubble it up
     if (!indexConflictCodes.has(error.code)) throw error
 
-    // Resolve index conflicts by dropping the conflicting index
-    const existing = await collection.indexes()
-    for (const { key } of indexes) {
-      const name = autoIndexName(key)
-      const conflicting = existing.find((index) =>
-        JSON.stringify(index.key) === JSON.stringify(key) || index.name === name)
-      if (conflicting) {
-        logger.info(`Dropping conflicting index ${conflicting.name} from collection ${collection.collectionName}`)
-        await collection.dropIndex(conflicting.name)
-      }
+    if (backend !== 'mongodb') {
+      throw new Error(
+        `Incompatible index definition in Cosmos DB collection ${collection.collectionName}; startup will not drop indexes. Resolve the existing index in Cosmos DB before restarting.`,
+        { cause: error }
+      )
     }
+
+    // MongoDB supports safe repair, but only drop the index identified as conflicting.
+    const existing = await collection.indexes()
+    const conflicting = getConflictingIndex(indexes, existing, error)
+    if (!conflicting) throw error
+
+    logger.info(`Dropping conflicting index ${conflicting.name} from collection ${collection.collectionName}`)
+    await collection.dropIndex(conflicting.name)
 
     // Short delay and recurse back to the try/catch block safely
-    if (attempt < maxTransientRetries) {
+    if (attempt < maxIndexRetries) {
       await delay(Math.min(500 * (attempt + 1), maxRetryDelayMs))
-      return createIndexesReplacingConflicts(collection, indexes, attempt + 1)
+      return createIndexesReplacingConflicts(collection, indexes, backend, attempt + 1)
     }
 
-    logger.error(`Index creation completely failed for collection ${collection.collectionName} after exhausting retries. Error: ${error}`)
+    throw new Error(
+      `Index creation for collection ${collection.collectionName} failed after ${maxIndexRetries} retries`,
+      { cause: error }
+    )
   }
 }
 
-// Cosmos DB's Mongo API only supports TTL indexes on its internal _ts (last-modified) field,
-// not arbitrary fields like expiresAt/createdAt - this ceiling is a Cosmos-only safety net for
-// any document that ends up without a per-document ttl override (see mongodb-adapter.js).
-// On real MongoDB, _ts is never populated, so this index is a harmless no-op there.
-// NOTE: observed unreliable in practice on the Linux Cosmos DB Emulator specifically - expired
-// documents can persist well past both the per-document ttl and this fallback ceiling. Not
-// verified against a real Azure Cosmos DB for MongoDB account, which should honour it correctly.
+// Cosmos DB's Mongo API supports TTL indexes on its internal _ts (last-modified) field.
+// Per-document TTL values override this fallback for OIDC documents (see mongodb-adapter.js).
 const cosmosFallbackTtlSeconds = 60 * 60 * 24 * 30
 
 /**
@@ -138,7 +199,7 @@ const cosmosFallbackTtlSeconds = 60 * 60 * 24 * 30
  * @param {import('mongodb').Db} [db] - Database instance, injectable for testing
  * @returns {Promise<void>}
  */
-export async function ensureOidcIndexes (db) {
+export async function ensureOidcIndexes (db, backend = config.db.mongoBackend) {
   db ??= await getDb()
 
   // sequential, not parallel: Cosmos DB provisions a container per collection on first
@@ -156,15 +217,16 @@ export async function ensureOidcIndexes (db) {
             unique: true,
           }]
         : []),
-      {
-        key: { expiresAt: 1 },
-        expireAfterSeconds: 0,
-      },
-      {
-        key: { _ts: 1 },
-        expireAfterSeconds: cosmosFallbackTtlSeconds,
-      },
-    ])
+      backend !== 'mongodb'
+        ? {
+            key: { _ts: 1 },
+            expireAfterSeconds: cosmosFallbackTtlSeconds
+          }
+        : {
+            key: { expiresAt: 1 },
+            expireAfterSeconds: 0
+          }
+    ], backend)
   }
 }
 
@@ -179,7 +241,7 @@ const authContextTtlSeconds = config.oidc.ttl.refreshTokenSeconds
  * @param {import('mongodb').Db} [db] - Database instance, injectable for testing
  * @returns {Promise<void>}
  */
-export async function ensureAccountIndexes (db) {
+export async function ensureAccountIndexes (db, backend = config.db.mongoBackend) {
   db ??= await getDb()
 
   await createIndexesReplacingConflicts(db.collection('accounts'), [
@@ -189,11 +251,11 @@ export async function ensureAccountIndexes (db) {
     { key: { uniqueReference: 1 }, unique: true, sparse: true },
     { key: { crn: 1 } },
     { key: { email: 1 }, unique: true, collation: caseInsensitiveCollation },
-  ])
+  ], backend)
 
   await createIndexesReplacingConflicts(db.collection('authContexts'), [
-    { key: { createdAt: 1 }, expireAfterSeconds: authContextTtlSeconds },
-    // Cosmos DB-only fallback - see cosmosFallbackTtlSeconds above, inert on real MongoDB
-    { key: { _ts: 1 }, expireAfterSeconds: authContextTtlSeconds },
-  ])
+    backend !== 'mongodb'
+      ? { key: { _ts: 1 }, expireAfterSeconds: authContextTtlSeconds }
+      : { key: { createdAt: 1 }, expireAfterSeconds: authContextTtlSeconds }
+  ], backend)
 }
